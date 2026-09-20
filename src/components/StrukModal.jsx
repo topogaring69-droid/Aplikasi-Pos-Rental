@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { formatRupiah, formatDateTime } from '../lib/storage';
+import { formatRentalDuration } from '../lib/rentalPricing';
 import { showError } from '../lib/sweetalert';
 
 export default function StrukModal({ tx, settings, onClose }) {
@@ -83,7 +84,7 @@ Terima kasih telah mempercayai layanan *SHELBY RENT*.
 *Unit:* ${tx.nopol}
 *Mulai Sewa:* ${formatDateTime(tx.startDate)}
 *Selesai Sewa:* ${formatDateTime(tx.endDate)}
-*Durasi:* ${tx.durationHours ? `${tx.durationHours} Jam` : `${tx.durationDays || 1} Hari`}
+*Durasi:* ${formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)}
 *Sewa Pokok:* ${formatRupiah(tx.rentalPrice)}
 ${extraTotal > 0 ? `*Biaya Tambahan:* ${formatRupiah(extraTotal)}\n` : ''}*TOTAL BAYAR:* *${formatRupiah(tx.total)}* (${tx.paymentMethod || 'Lunas'})
 
@@ -228,7 +229,7 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                 <div className="receipt-row">
                   <span>Durasi:</span>
                   <span style={{ fontWeight: '700' }}>
-                    {tx.durationHours ? `${tx.durationHours} Jam` : `${tx.durationDays || 1} Hari`}
+                    {formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)}
                   </span>
                 </div>
               </div>
@@ -242,7 +243,7 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                 <div className="receipt-divider" style={{ margin: '4px 0 8px' }} />
 
                 <div className="receipt-row">
-                  <span>Sewa Motor ({tx.durationHours ? `${tx.durationHours} Jam` : `${tx.durationDays || 1} Hari`})</span>
+                  <span>Sewa Motor ({formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)})</span>
                   <span>{formatRupiah(tx.rentalPrice)}</span>
                 </div>
 
@@ -338,7 +339,7 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                       <strong>Sewa Unit Motor ({tx.nopol})</strong>
                       <div style={{ fontSize: '11px', color: '#64748b' }}>Sewa rental kendaraan roda dua ({tx.durationHours ? `${tx.durationHours} Jam` : `${tx.durationDays || 1} Hari`})</div>
                     </td>
-                    <td>{tx.durationHours ? `${tx.durationHours} Jam` : `${tx.durationDays || 1} Hari`}</td>
+                    <td>{formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)}</td>
                     <td className="text-right">{formatRupiah(tx.rentalPrice)}</td>
                     <td className="text-right"><strong>{formatRupiah(tx.rentalPrice)}</strong></td>
                   </tr>

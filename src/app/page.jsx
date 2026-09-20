@@ -43,6 +43,12 @@ import { showToast, showConfirm } from '../lib/sweetalert';
 import { SkeletonList, SkeletonSearchBar } from '../components/Skeleton';
 import SearchableSelect from '../components/SearchableSelect';
 import { exportTransactionsToExcel } from '../lib/excelExport';
+import { 
+  calculateRentalBilling, 
+  formatRentalDuration, 
+  EXTEND_HOURLY_RATE, 
+  MAX_EXTEND_HOURS 
+} from '../lib/rentalPricing';
 
 // Helper format Date ke format input datetime-local: YYYY-MM-DDTHH:mm
 const formatToInput = (d) => {
@@ -69,10 +75,13 @@ export default function TransaksiPage() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [autoSaveCustomer, setAutoSaveCustomer] = useState(true);
   
-  // Mulai Sewa (Tanggal & Jam), Selesai Sewa (Tanggal & Jam), Durasi Jam (Basis 24 Jam)
+  // Mulai Sewa (Tanggal & Jam), Selesai Sewa (Tanggal & Jam), Durasi Hari & Extend (Maks. 4 Jam)
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [durationDays, setDurationDays] = useState(1);
+  const [extendHours, setExtendHours] = useState(0); // 0 s/d 4 jam
   const [durationHours, setDurationHours] = useState(24);
+  const [overtimeAlert, setOvertimeAlert] = useState(null);
   
   const [rentalPrice, setRentalPrice] = useState(100000);
   const [extraCosts, setExtraCosts] = useState([
@@ -100,7 +109,10 @@ export default function TransaksiPage() {
     const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     setStartDate(formatToInput(now));
     setEndDate(formatToInput(end));
+    setDurationDays(1);
+    setExtendHours(0);
     setDurationHours(24);
+    setOvertimeAlert(null);
   };
 
   const loadData = async () => {
@@ -141,18 +153,18 @@ export default function TransaksiPage() {
     }
   }, [showForm]);
 
-  // Hitung otomatis harga sewa berdasarkan tarif armada (basis 24 jam & tarif per jam)
-  const calculateRentalPrice = (target, hours = durationHours) => {
+  // Hitung otomatis harga sewa berdasarkan tarif armada (basis Hari & extend Rp 10.000/jam, max 4 jam)
+  const calculateRentalPrice = (targetMotorOrRate = selectedFleetItem || nopol, days = durationDays, ext = extendHours) => {
     let rate = 0;
     let unitLabel = '';
 
-    if (typeof target === 'number') {
-      rate = target;
-    } else if (target && typeof target === 'object') {
-      rate = Number(target.dailyRate) || 0;
-      unitLabel = `${target.nopol} (${target.brand || ''} ${target.model || ''})`.trim();
-    } else if (typeof target === 'string') {
-      const q = target.trim().toLowerCase();
+    if (typeof targetMotorOrRate === 'number') {
+      rate = targetMotorOrRate;
+    } else if (targetMotorOrRate && typeof targetMotorOrRate === 'object') {
+      rate = Number(targetMotorOrRate.dailyRate) || 0;
+      unitLabel = `${targetMotorOrRate.nopol} (${targetMotorOrRate.brand || ''} ${targetMotorOrRate.model || ''})`.trim();
+    } else if (typeof targetMotorOrRate === 'string') {
+      const q = targetMotorOrRate.trim().toLowerCase();
       const cleanQ = q.replace(/\s+/g, '');
       const found = fleet.find((f) => {
         const fn = String(f.nopol || '').trim().toLowerCase();
@@ -165,24 +177,19 @@ export default function TransaksiPage() {
       }
     }
 
-    if (!rate || isNaN(rate)) return null;
-
-    const h = Number(hours) || 24;
-    const fullDays = Math.floor(h / 24);
-    const remHours = h % 24;
-    const ratePerHour = Math.round(rate / 24);
-
-    let price = 0;
-    if (h < 24) {
-      // Standar rental: minimal sewa 1 hari (24 jam)
-      price = rate;
-    } else {
-      // 24 jam x N hari + kelebihan jam (overtime)
-      price = (fullDays * rate) + (remHours * ratePerHour);
+    if (!rate) {
+      rate = 100000;
     }
 
-    setRentalPrice(price);
-    return { price, rate, unitLabel };
+    const billing = calculateRentalBilling({
+      days,
+      extendHours: ext,
+      dailyRate: rate,
+      hourlyOvertimeRate: EXTEND_HOURLY_RATE
+    });
+
+    setRentalPrice(billing.totalPrice);
+    return { ...billing, unitLabel };
   };
 
   // Pilih motor dari armada: otomatis isi nopol & estimasi tarif harian/perjam
@@ -190,7 +197,7 @@ export default function TransaksiPage() {
     const selectedNopol = e.target.value;
     setNopol(selectedNopol);
     if (selectedNopol) {
-      calculateRentalPrice(selectedNopol, durationHours);
+      calculateRentalPrice(selectedNopol, durationDays, extendHours);
     }
   };
 
@@ -208,37 +215,62 @@ export default function TransaksiPage() {
     }
   };
 
-  // ================= SINKRONISASI DUA ARAH TANGGAL, JAM & DURASI =================
+  // ================= SINKRONISASI DUA ARAH TANGGAL, JAM & DURASI HARI =================
 
-  // 1. Kasir mengubah Mulai Sewa (Tanggal dan Jam)
+  // 1. Kasir mengubah Jumlah Hari Sewa
+  const handleDaysChange = (daysVal) => {
+    const d = Math.max(1, Number(daysVal) || 1);
+    setDurationDays(d);
+    setOvertimeAlert(null);
+
+    const totalH = (d * 24) + extendHours;
+    setDurationHours(totalH);
+
+    if (startDate) {
+      const start = new Date(startDate);
+      if (!isNaN(start.getTime())) {
+        const totalMs = totalH * 3600 * 1000;
+        const newEnd = new Date(start.getTime() + totalMs);
+        setEndDate(formatToInput(newEnd));
+      }
+    }
+    calculateRentalPrice(selectedFleetItem || nopol, d, extendHours);
+  };
+
+  // 2. Kasir memilih jam extend (0 s/d 4 jam, Rp 10.000/jam)
+  const handleExtendChange = (extVal) => {
+    const ext = Math.max(0, Math.min(MAX_EXTEND_HOURS, Number(extVal) || 0));
+    setExtendHours(ext);
+    setOvertimeAlert(null);
+
+    const totalH = (durationDays * 24) + ext;
+    setDurationHours(totalH);
+
+    if (startDate) {
+      const start = new Date(startDate);
+      if (!isNaN(start.getTime())) {
+        const totalMs = totalH * 3600 * 1000;
+        const newEnd = new Date(start.getTime() + totalMs);
+        setEndDate(formatToInput(newEnd));
+      }
+    }
+    calculateRentalPrice(selectedFleetItem || nopol, durationDays, ext);
+  };
+
+  // 3. Kasir mengubah Mulai Sewa (Tanggal dan Jam)
   const handleStartDateChange = (val) => {
     setStartDate(val);
     if (val) {
       const start = new Date(val);
       if (!isNaN(start.getTime())) {
-        const newEnd = new Date(start.getTime() + durationHours * 3600 * 1000);
+        const totalMs = ((durationDays * 24) + extendHours) * 3600 * 1000;
+        const newEnd = new Date(start.getTime() + totalMs);
         setEndDate(formatToInput(newEnd));
       }
     }
   };
 
-  // 2. Kasir mengubah Durasi Jam (misal ketik 30 jam, atau klik chip 24/48/72 jam)
-  const handleDurationHoursChange = (hours) => {
-    const h = Math.max(1, Number(hours) || 1);
-    setDurationHours(h);
-    if (startDate) {
-      const start = new Date(startDate);
-      if (!isNaN(start.getTime())) {
-        const newEnd = new Date(start.getTime() + h * 3600 * 1000);
-        setEndDate(formatToInput(newEnd));
-      }
-    }
-    if (nopol) {
-      calculateRentalPrice(nopol, h);
-    }
-  };
-
-  // 3. Kasir mengubah Selesai Sewa (Tanggal dan Jam) secara langsung
+  // 4. Kasir mengubah Selesai Sewa (Tanggal dan Jam) secara langsung
   const handleEndDateChange = (val) => {
     setEndDate(val);
     if (val && startDate) {
@@ -246,27 +278,42 @@ export default function TransaksiPage() {
       const end = new Date(val);
       const diffMs = end.getTime() - start.getTime();
       if (diffMs > 0) {
-        const h = Math.max(1, Math.round(diffMs / (3600 * 1000)));
-        setDurationHours(h);
-        if (nopol) {
-          calculateRentalPrice(nopol, h);
+        const totalH = Math.max(1, Math.round(diffMs / 3600000));
+        const rawDays = Math.floor(totalH / 24);
+        const remHours = totalH % 24;
+
+        let d = rawDays;
+        let ext = 0;
+        let alertMsg = null;
+
+        if (totalH <= 24) {
+          d = 1;
+          ext = 0;
+        } else if (remHours === 0) {
+          d = rawDays;
+          ext = 0;
+        } else if (remHours <= MAX_EXTEND_HOURS) {
+          d = rawDays;
+          ext = remHours;
+        } else {
+          // Lebih dari 4 jam -> Otomatis nambah 1 hari sewa penuh!
+          d = rawDays + 1;
+          ext = 0;
+          alertMsg = `Kelebihan waktu ${remHours} jam melebihi batas extend (maks. 4 jam). Otomatis dihitung bertambah 1 hari sewa (${d} Hari Penuh).`;
         }
+
+        setDurationDays(d);
+        setExtendHours(ext);
+        setDurationHours(totalH);
+        setOvertimeAlert(alertMsg);
+        calculateRentalPrice(selectedFleetItem || nopol, d, ext);
       }
     }
   };
 
-  // Tambah durasi cepat (+6 jam, +12 jam, +24 jam)
-  const addHours = (extra) => {
-    handleDurationHoursChange(durationHours + extra);
-  };
-
-  // Format durasi ramah kasir (misal: "24 Jam (1 Hari)" atau "28 Jam (1 Hari + 4 Jam)")
+  // Format durasi ramah kasir
   const getDurationSummary = () => {
-    const days = Math.floor(durationHours / 24);
-    const rem = durationHours % 24;
-    if (days === 0) return `${durationHours} Jam`;
-    if (rem === 0) return `${durationHours} Jam (${days} Hari Penuh)`;
-    return `${durationHours} Jam (${days} Hari + ${rem} Jam Overtime)`;
+    return formatRentalDuration(durationDays, extendHours, durationHours);
   };
 
   // Manajemen Baris Biaya Tambahan Dinamis
@@ -315,8 +362,13 @@ export default function TransaksiPage() {
       setEndDate(!isNaN(e.getTime()) ? formatToInput(e) : tx.endDate.slice(0, 16));
     }
 
-    const h = tx.durationHours || (Number(tx.durationDays) || 1) * 24;
-    setDurationHours(h);
+    const totalH = tx.durationHours || (Number(tx.durationDays) || 1) * 24;
+    const d = tx.durationDays || Math.floor(totalH / 24) || 1;
+    const ext = tx.extendHours != null ? tx.extendHours : (totalH % 24 <= MAX_EXTEND_HOURS ? totalH % 24 : 0);
+    setDurationDays(d);
+    setExtendHours(ext);
+    setDurationHours(totalH);
+    setOvertimeAlert(null);
     setRentalPrice(Number(tx.rentalPrice) || 0);
 
     const extras = Array.isArray(tx.extraCosts) && tx.extraCosts.length > 0 
@@ -407,8 +459,9 @@ export default function TransaksiPage() {
         customerPhone: customerPhone.trim(),
         startDate,
         endDate,
-        durationDays: calcDays,
-        durationHours: durationHours,
+        durationDays: durationDays,
+        extendHours: extendHours,
+        durationHours: (durationDays * 24) + extendHours,
         rentalPrice: Number(rentalPrice),
         extraCosts: extraCosts.filter((c) => c.label.trim() && Number(c.amount) > 0),
         total: totalAmount,
@@ -591,14 +644,14 @@ export default function TransaksiPage() {
                   const plate = (item?.nopol || val || '').toUpperCase().trim();
                   setNopol(plate);
                   if (item && item.dailyRate) {
-                    const res = calculateRentalPrice(item, durationHours);
+                    const res = calculateRentalPrice(item, durationDays, extendHours);
                     if (res) {
-                      showToast(`Motor ${item.nopol} (${item.brand} ${item.model}) dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.price)}`);
+                      showToast(`Motor ${item.nopol} (${item.brand} ${item.model}) dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
                     }
                   } else if (plate) {
-                    const res = calculateRentalPrice(plate, durationHours);
+                    const res = calculateRentalPrice(plate, durationDays, extendHours);
                     if (res) {
-                      showToast(`Motor ${plate} dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.price)}`);
+                      showToast(`Motor ${plate} dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
                     }
                   }
                 }}
@@ -712,7 +765,7 @@ export default function TransaksiPage() {
               )}
             </div>
 
-            {/* 3. MULAI SEWA TANGGAL & JAM + HITUNGAN DURASI PERJAM 24 JAM + SELESAI SEWA */}
+            {/* 3. JADWAL SEWA & HITUNGAN HARI + EXTEND MAKSIMAL 4 JAM */}
             <div style={{ 
               background: '#f8fafc', 
               padding: '14px', 
@@ -722,7 +775,7 @@ export default function TransaksiPage() {
             }}>
               <div style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Clock size={15} />
-                JADWAL & HITUNGAN DURASI PER JAM (BASIS 24 JAM)
+                JADWAL & DURASI SEWA (BERBASIS HARI & EXTEND MAKS. 4 JAM)
               </div>
 
               {/* Baris Mulai & Selesai Sewa */}
@@ -754,79 +807,111 @@ export default function TransaksiPage() {
                 </div>
               </div>
 
-              {/* Input Durasi Jam & Chip Cepat */}
+              {/* Banner Peringatan jika Extend > 4 Jam */}
+              {overtimeAlert && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '8px 12px',
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '12px',
+                  color: '#92400e'
+                }}>
+                  <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                  <span>{overtimeAlert}</span>
+                </div>
+              )}
+
+              {/* Input Jumlah Hari & Preset Cepat */}
               <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <label className="form-label" style={{ marginBottom: 0, fontWeight: '700' }}>
-                    ⏱️ Durasi Sewa (Total Jam):
+                    ⏱️ Durasi Pokok Sewa (Hari):
                   </label>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary)' }}>
-                    {getDurationSummary()}
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
+                    {durationDays} Hari ({durationDays * 24} Jam)
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
                   <input
                     type="number"
                     min="1"
                     className="form-control"
-                    value={durationHours}
-                    onChange={(e) => handleDurationHoursChange(e.target.value)}
+                    value={durationDays}
+                    onChange={(e) => handleDaysChange(e.target.value)}
                     inputMode="numeric"
-                    style={{ maxWidth: '110px', fontWeight: '700', fontSize: '15px' }}
+                    style={{ maxWidth: '90px', fontWeight: '700', fontSize: '15px' }}
                     required
                   />
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>Jam</span>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>Hari</span>
 
-                  {/* Tombol Preset Cepat */}
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${durationHours === 24 ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => handleDurationHoursChange(24)}
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                    >
-                      24 Jam (1 Hr)
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${durationHours === 48 ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => handleDurationHoursChange(48)}
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                    >
-                      48 Jam (2 Hr)
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${durationHours === 72 ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => handleDurationHoursChange(72)}
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                    >
-                      72 Jam (3 Hr)
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline"
-                      onClick={() => addHours(6)}
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                      title="Tambah 6 Jam"
-                    >
-                      +6 Jam
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline"
-                      onClick={() => addHours(24)}
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                      title="Tambah 24 Jam"
-                    >
-                      +24 Jam
-                    </button>
+                  {/* Preset Chip Hari */}
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                    {[1, 2, 3, 7, 14, 28, 30].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`btn btn-sm ${durationDays === d && extendHours === 0 ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => handleDaysChange(d)}
+                        style={{ padding: '3px 7px', fontSize: '11px', borderRadius: '6px' }}
+                      >
+                        {d === 7 ? '7 Hr (1 Mgg)' : d === 14 ? '14 Hr (2 Mgg)' : d === 28 ? '28 Hr (1 Bln)' : `${d} Hr`}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                  * Mengubah tanggal selesai sewa otomatis menghitung durasi jam, begitu pula sebaliknya.
+                {/* Pilihan Extend / Jam Tambahan (Max 4 Jam @ Rp 10.000) */}
+                <div style={{ marginTop: '10px', padding: '10px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)' }}>
+                      Extend / Jam Tambahan (Maks. 4 Jam @ Rp 10.000/jam):
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: extendHours > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>
+                      {extendHours > 0 ? `+${extendHours} Jam (+${formatRupiah(extendHours * 10000)})` : 'Tidak Ada'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[0, 1, 2, 3, 4].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        className={`btn btn-sm ${extendHours === h ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => handleExtendChange(h)}
+                        style={{ flex: 1, minWidth: '60px', padding: '4px 6px', fontSize: '11px', borderRadius: '6px', textAlign: 'center' }}
+                      >
+                        {h === 0 ? 'Tanpa Extend' : `+${h} Jam (${h * 10}rb)`}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    * Kelebihan waktu lebih dari 4 jam otomatis dihitung nambah 1 hari sewa penuh.
+                  </div>
+                </div>
+
+                {/* Ringkasan Durasi Lengkap */}
+                <div style={{ 
+                  marginTop: '10px', 
+                  padding: '8px 12px', 
+                  background: 'rgba(5, 150, 105, 0.05)', 
+                  borderRadius: '8px', 
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--primary)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>Total Durasi Ditagih:</span>
+                  <span style={{ fontWeight: '800' }}>
+                    {getDurationSummary()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -836,7 +921,8 @@ export default function TransaksiPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>Biaya Sewa Pokok (Rp) *</label>
                 <span style={{ fontSize: '11px', color: selectedFleetItem ? 'var(--primary)' : 'var(--text-muted)', fontWeight: selectedFleetItem ? '700' : '400' }}>
-                  {durationHours} Jam {selectedFleetItem ? `(Tarif: ${formatRupiah(selectedFleetItem.dailyRate)}/24 Jam)` : `(Tarif: ${formatRupiah(rentalPrice)})`}
+                  {durationDays} Hari x {formatRupiah(selectedFleetItem ? selectedFleetItem.dailyRate : 100000)}
+                  {extendHours > 0 ? ` + Extend ${extendHours} Jam (${formatRupiah(extendHours * 10000)})` : ''}
                 </span>
               </div>
               <input

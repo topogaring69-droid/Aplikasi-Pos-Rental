@@ -3,6 +3,7 @@
 import React from 'react';
 import { X, Printer, Trash2, Calendar, Phone, User, ShieldCheck } from 'lucide-react';
 import { formatRupiah, formatDateTime } from '../lib/storage';
+import { formatRentalDuration } from '../lib/rentalPricing';
 
 export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) {
   if (!tx) return null;
@@ -10,12 +11,7 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) 
   const extraCosts = tx.extraCosts || [];
   const extraTotal = extraCosts.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-  const durationHours = tx.durationHours || (Number(tx.durationDays) || 1) * 24;
-  const days = Math.floor(durationHours / 24);
-  const remHours = durationHours % 24;
-  const durationText = days > 0 
-    ? `${durationHours} Jam (${days} Hari${remHours > 0 ? ` + ${remHours} Jam` : ''})`
-    : `${durationHours} Jam`;
+  const durationText = formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

@@ -445,13 +445,24 @@ export function getTransactionStatus(tx) {
 
   if (diffMs < 0) {
     const lateHours = Math.ceil(Math.abs(diffMs) / 3600000);
+    const isOverLimit = lateHours > 4;
+    const lateDays = isOverLimit ? Math.ceil(lateHours / 24) : 0;
+    const estimatedPenalty = isOverLimit 
+      ? lateDays * (Number(tx.rentalPrice && tx.durationDays ? Math.round(tx.rentalPrice / tx.durationDays) : 100000))
+      : lateHours * 10000;
+
     return {
       key: 'terlambat',
       label: 'Terlambat',
       badgeClass: 'badge-danger',
       color: '#e11d48',
       lateHours,
-      subtext: `Lewat ${lateHours} jam`
+      lateDays,
+      isOverLimit,
+      estimatedPenalty,
+      subtext: isOverLimit
+        ? `Lewat ${lateHours} jam (Denda ${lateDays} hari)`
+        : `Lewat ${lateHours} jam (Extend: Rp ${(lateHours * 10000).toLocaleString('id-ID')})`
     };
   }
 
@@ -858,3 +869,12 @@ export function getGdriveReceiptUrl(expOrUrl) {
 
   return url;
 }
+
+// Re-export modul kalkulasi tarif sewa berbasis hari & extend
+export {
+  calculateRentalBilling,
+  formatRentalDuration,
+  calculateOverdueFee,
+  EXTEND_HOURLY_RATE,
+  MAX_EXTEND_HOURS
+} from './rentalPricing.js';

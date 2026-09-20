@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { formatDateTime, formatDateOnly, formatRupiah } from './storage';
+import { formatRentalDuration } from './rentalPricing';
 import { showAlert } from './sweetalert';
 
 // Palet warna standar Excel
@@ -182,7 +183,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       vehicleName,
       formatDateTime(tx.startDate),
       formatDateTime(tx.endDate),
-      `${hours} Jam`,
+      formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours),
       Number(tx.rentalPrice) || 0,
       extraTotal,
       Number(tx.total) || 0,

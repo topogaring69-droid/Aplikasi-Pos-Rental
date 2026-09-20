@@ -21,6 +21,7 @@ import { SkeletonList, SkeletonSearchBar } from '../../components/Skeleton';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 import { exportTransactionsToExcel } from '../../lib/excelExport';
+import { formatRentalDuration } from '../../lib/rentalPricing';
 
 export default function TransaksiPage() {
   const [transactions, setTransactions] = useState(() => getTransactions());
@@ -144,8 +145,12 @@ export default function TransaksiPage() {
 
     let alertText = `Konfirmasi pengembalian unit ${tx.nopol} oleh pelanggan ${tx.customerName}? Status unit motor akan dikembalikan menjadi Tersedia.`;
     if (isLate) {
-      extraNote = `Unit dikembalikan terlambat ${tx.calculatedStatus.lateHours} jam`;
-      alertText += `\n\nPerhatian: Transaksi ini terlambat ${tx.calculatedStatus.lateHours} jam. Pastikan periksa denda dan kelengkapan unit motor.`;
+      const lateH = tx.calculatedStatus.lateHours || 0;
+      const penaltyText = tx.calculatedStatus.isOverLimit
+        ? `Denda sewa 1 hari penuh (${formatRupiah(tx.calculatedStatus.estimatedPenalty)})`
+        : `Denda extend ${lateH} jam x Rp 10.000 (${formatRupiah(tx.calculatedStatus.estimatedPenalty)})`;
+      extraNote = `Unit dikembalikan terlambat ${lateH} jam (${penaltyText})`;
+      alertText += `\n\nPerhatian: Transaksi ini terlambat ${lateH} jam. Estimasi: ${penaltyText}. Pastikan periksa denda dan kelengkapan unit motor.`;
     }
 
     const ok = await showConfirm({
@@ -427,6 +432,12 @@ export default function TransaksiPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Armada Motor:</span>
                     <strong style={{ color: 'var(--text-main)' }}>{tx.nopol} ({tx.vehicleModel})</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Durasi Sewa:</span>
+                    <strong style={{ color: 'var(--primary)' }}>
+                      {formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)}
+                    </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Mulai Sewa:</span>
