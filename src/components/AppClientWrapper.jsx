@@ -32,9 +32,14 @@ export default function AppClientWrapper({ children }) {
 
     // 3. Daftarkan Service Worker PWA jika didukung
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      navigator.serviceWorker.register('/service-worker.js').catch((err) => {
-        console.log('SW registration error:', err);
-      });
+      navigator.serviceWorker
+        .register('/service-worker.js')
+        .then((reg) => {
+          reg.update();
+        })
+        .catch((err) => {
+          console.log('SW registration error:', err);
+        });
     }
   }, [pathname]);
 

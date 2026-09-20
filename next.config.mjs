@@ -3,7 +3,7 @@ const nextConfig = {
   // Hanya aktifkan static export jika environment STATIC_EXPORT diaktifkan (untuk Capacitor)
   // Default: Fullstack mode untuk mendukung REST API routes dan database SQLite
   output: process.env.STATIC_EXPORT === 'true' ? 'export' : undefined,
-  trailingSlash: true,
+  trailingSlash: process.env.STATIC_EXPORT === 'true',
   images: {
     unoptimized: true,
   },

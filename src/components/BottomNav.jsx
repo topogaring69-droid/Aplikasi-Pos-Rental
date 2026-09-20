@@ -23,31 +23,31 @@ export default function BottomNav() {
       active: pathname === '/'
     },
     {
-      href: '/pelanggan/',
+      href: '/pelanggan',
       label: 'Pelanggan',
       icon: Users,
       active: pathname?.startsWith('/pelanggan')
     },
     {
-      href: '/pengeluaran/',
+      href: '/pengeluaran',
       label: 'Pengeluaran',
       icon: ArrowDownCircle,
       active: pathname?.startsWith('/pengeluaran')
     },
     {
-      href: '/laporan/',
+      href: '/laporan',
       label: 'Laporan',
       icon: BarChart3,
       active: pathname?.startsWith('/laporan')
     },
     {
-      href: '/armada/',
+      href: '/armada',
       label: 'Armada',
       icon: Bike,
       active: pathname?.startsWith('/armada')
     },
     {
-      href: '/pengaturan/',
+      href: '/pengaturan',
       label: 'Struk',
       icon: Settings,
       active: pathname?.startsWith('/pengaturan')

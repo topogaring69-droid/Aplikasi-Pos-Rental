@@ -1,7 +1,6 @@
-// Service Worker untuk POS Rental Motor PWA Offline Mode
-const CACHE_NAME = 'pos-rental-cache-v1';
-const ASSETS_TO_CACHE = [
-  '/',
+// Service Worker untuk POS Rental Motor PWA (v2 - Safe Cache Management)
+const CACHE_NAME = 'pos-rental-cache-v2';
+const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon.svg'
 ];
@@ -9,7 +8,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(() => {});
+      return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
   self.skipWaiting();
@@ -20,7 +19,9 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
+          // Bersihkan seluruh cache versi lama (v1, dsb)
           if (key !== CACHE_NAME) {
+            console.log('[SW] Menghapus cache usang:', key);
             return caches.delete(key);
           }
         })
@@ -31,26 +32,41 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Offline-first strategy for static assets, network fallback
+  // Hanya proses HTTP GET
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+
+  // PENTING: Jangan mencegat atau meng-cache aset internal Next.js, API, atau RSC payload
+  // Biarkan Next.js dan CDN Vercel mengelola versioning chunk via hash content secara langsung
+  if (
+    url.pathname.startsWith('/_next/') ||
+    url.pathname.startsWith('/api/') ||
+    url.searchParams.has('_rsc') ||
+    url.pathname.endsWith('.js')
+  ) {
+    return; // Bypass Service Worker, langsung ke network
+  }
+
+  // Strategi Network-First untuk navigasi halaman & ikon statis
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Hanya simpan jika respons valid
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          // Hanya cache aset statis umum (bukan halaman dinamis)
+          if (url.pathname.startsWith('/icons/') || url.pathname.startsWith('/images/')) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
         }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
         return networkResponse;
-      }).catch(() => {
-        return caches.match('/');
-      });
-    })
+      })
+      .catch(() => {
+        // Fallback hanya saat offline untuk aset yang memang sudah ter-cache
+        return caches.match(event.request);
+      })
   );
 });
