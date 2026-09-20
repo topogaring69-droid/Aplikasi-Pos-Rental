@@ -30,7 +30,16 @@ export async function PUT(request) {
     if (!tx.id) {
       return NextResponse.json({ success: false, error: 'ID transaksi wajib disertakan' }, { status: 400 });
     }
-    const data = await transactionService.update(tx.id, tx);
+
+    let data;
+    if (tx.action === 'activate') {
+      data = await transactionService.activateTransaction(tx.id);
+    } else if (tx.action === 'complete') {
+      data = await transactionService.completeTransaction(tx.id, tx.notes);
+    } else {
+      data = await transactionService.update(tx.id, tx);
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Transaksi PUT Error:', error);

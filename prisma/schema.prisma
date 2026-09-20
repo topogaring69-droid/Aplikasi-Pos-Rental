@@ -91,11 +91,13 @@ model Transaction {
   paymentMethod String    @default("Tunai") @map("payment_method")
   amountPaid    Int       @map("amount_paid")
   changeAmount  Int       @default(0) @map("change_amount")
+  status        String    @default("active")
   notes         String?   @default("")
   createdAt     DateTime  @default(now()) @map("created_at")
   deletedAt     DateTime? @map("deleted_at")
 
   @@index([deletedAt])
+  @@index([status])
   @@map("transactions")
 }
 

@@ -232,10 +232,148 @@ export async function saveTransaction(tx) {
     updateVehicleStatus(oldItem.nopol, 'available');
   }
   if (saved.nopol) {
-    updateVehicleStatus(saved.nopol, 'rented');
+    if (saved.status === 'booking') {
+      // Motor belum diambil (masih booking)
+    } else if (saved.status === 'selesai') {
+      updateVehicleStatus(saved.nopol, 'available');
+    } else {
+      updateVehicleStatus(saved.nopol, 'rented');
+    }
   }
 
   return list;
+}
+
+export function getTransactionStatus(tx) {
+  if (!tx) return { key: 'selesai', label: 'Selesai', badgeClass: 'badge-secondary', color: '#64748b' };
+
+  const rawStatus = (tx.status || 'active').toLowerCase();
+  if (rawStatus === 'booking') {
+    return {
+      key: 'booking',
+      label: 'Booking',
+      badgeClass: 'badge-warning',
+      color: '#d97706',
+      subtext: 'Menunggu Pengambilan'
+    };
+  }
+
+  if (rawStatus === 'selesai' || rawStatus === 'completed') {
+    return {
+      key: 'selesai',
+      label: 'Selesai',
+      badgeClass: 'badge-secondary',
+      color: '#64748b',
+      subtext: 'Unit Telah Kembali'
+    };
+  }
+
+  // Cek masa aktif berdasarkan endDate
+  const endTime = new Date(tx.endDate).getTime();
+  const now = Date.now();
+  const diffMs = endTime - now;
+
+  if (isNaN(endTime)) {
+    return {
+      key: 'aktif',
+      label: 'Aktif',
+      badgeClass: 'badge-success',
+      color: '#16a34a',
+      subtext: 'Sedang Disewa'
+    };
+  }
+
+  if (diffMs < 0) {
+    const lateHours = Math.ceil(Math.abs(diffMs) / 3600000);
+    return {
+      key: 'terlambat',
+      label: 'Terlambat',
+      badgeClass: 'badge-danger',
+      color: '#e11d48',
+      lateHours,
+      subtext: `Lewat ${lateHours} jam`
+    };
+  }
+
+  // Jika sisa waktu <= 4 jam
+  if (diffMs <= 4 * 3600000) {
+    const remainingHours = (diffMs / 3600000).toFixed(1);
+    return {
+      key: 'hampir-selesai',
+      label: 'Hampir Selesai',
+      badgeClass: 'badge-warning',
+      color: '#ea580c',
+      remainingHours,
+      subtext: `Sisa ${remainingHours} jam`
+    };
+  }
+
+  const remainingHours = Math.ceil(diffMs / 3600000);
+  const remainingDays = Math.ceil(diffMs / 86400000);
+  return {
+    key: 'aktif',
+    label: 'Aktif',
+    badgeClass: 'badge-success',
+    color: '#16a34a',
+    remainingHours,
+    subtext: remainingDays > 1 ? `Sisa ${remainingDays} hari` : `Sisa ${remainingHours} jam`
+  };
+}
+
+export async function activateTransaction(id) {
+  if (!isBrowser) return;
+  const res = await fetch('/api/transaksi', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'activate' })
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal mengaktifkan transaksi (${res.status})`);
+  }
+
+  const updated = json.data;
+  const list = getTransactions();
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx >= 0) {
+    list[idx] = updated;
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+  }
+
+  if (updated?.nopol) {
+    updateVehicleStatus(updated.nopol, 'rented');
+  }
+
+  return updated;
+}
+
+export async function completeTransaction(id, extraNotes = '') {
+  if (!isBrowser) return;
+  const res = await fetch('/api/transaksi', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'complete', notes: extraNotes })
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyelesaikan transaksi (${res.status})`);
+  }
+
+  const updated = json.data;
+  const list = getTransactions();
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx >= 0) {
+    list[idx] = updated;
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+  }
+
+  if (updated?.nopol) {
+    updateVehicleStatus(updated.nopol, 'available');
+  }
+
+  return updated;
 }
 
 export async function deleteTransaction(id) {

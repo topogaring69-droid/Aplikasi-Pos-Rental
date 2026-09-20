@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   ReceiptText, 
+  ClipboardList,
   Users, 
   ArrowDownCircle, 
   BarChart3, 
@@ -23,10 +24,22 @@ export default function BottomNav() {
       active: pathname === '/'
     },
     {
+      href: '/transaksi',
+      label: 'Transaksi',
+      icon: ClipboardList,
+      active: pathname?.startsWith('/transaksi')
+    },
+    {
       href: '/pelanggan',
       label: 'Pelanggan',
       icon: Users,
       active: pathname?.startsWith('/pelanggan')
+    },
+    {
+      href: '/armada',
+      label: 'Armada',
+      icon: Bike,
+      active: pathname?.startsWith('/armada')
     },
     {
       href: '/pengeluaran',
@@ -41,21 +54,15 @@ export default function BottomNav() {
       active: pathname?.startsWith('/laporan')
     },
     {
-      href: '/armada',
-      label: 'Armada',
-      icon: Bike,
-      active: pathname?.startsWith('/armada')
-    },
-    {
       href: '/pengaturan',
-      label: 'Struk',
+      label: 'Pengaturan',
       icon: Settings,
       active: pathname?.startsWith('/pengaturan')
     }
   ];
 
   return (
-    <nav className="bottom-nav no-print" aria-label="Navigasi Utama">
+    <nav className="bottom-nav no-print" aria-label="Navigasi Utama" style={{ padding: '4px 6px calc(6px + var(--safe-bottom)) 6px', gap: '2px' }}>
       {navs.map((item) => {
         const Icon = item.icon;
         return (
@@ -63,12 +70,12 @@ export default function BottomNav() {
             key={item.href}
             href={item.href}
             className={`nav-item ${item.active ? 'active' : ''}`}
-            style={{ padding: '4px 6px', fontSize: '10px' }}
+            style={{ padding: '2px 2px', fontSize: '9.5px', flex: 1, minWidth: 0 }}
           >
-            <div className="nav-icon-wrap" style={{ width: '32px', height: '32px' }}>
-              <Icon size={18} strokeWidth={item.active ? 2.5 : 2} />
+            <div className="nav-icon-wrap" style={{ width: '28px', height: '28px' }}>
+              <Icon size={16} strokeWidth={item.active ? 2.5 : 2} />
             </div>
-            <span>{item.label}</span>
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{item.label}</span>
           </Link>
         );
       })}

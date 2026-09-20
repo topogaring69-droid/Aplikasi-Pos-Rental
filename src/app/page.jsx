@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   Search, 
   Printer, 
@@ -28,6 +29,7 @@ import {
   fetchCustomers,
   saveCustomer,
   fetchSettings, 
+  getTransactionStatus,
   formatRupiah, 
   formatDateTime 
 } from '../lib/storage';
@@ -73,6 +75,7 @@ export default function TransaksiPage() {
   const [paymentMethod, setPaymentMethod] = useState('Tunai');
   const [amountPaid, setAmountPaid] = useState('');
   const [notes, setNotes] = useState('');
+  const [txStatus, setTxStatus] = useState('active'); // 'active' atau 'booking'
 
   // State Modal Detail & Struk
   const [selectedTx, setSelectedTx] = useState(null);
@@ -273,6 +276,7 @@ export default function TransaksiPage() {
     setPaymentMethod(tx.paymentMethod || 'Tunai');
     setAmountPaid(tx.amountPaid ? String(tx.amountPaid) : String(tx.total || ''));
     setNotes(tx.notes || '');
+    setTxStatus(tx.status || 'active');
 
     setShowForm(true);
     setSelectedTx(null); // Tutup modal detail jika terbuka
@@ -298,6 +302,7 @@ export default function TransaksiPage() {
     setPaymentMethod('Tunai');
     setAmountPaid('');
     setNotes('');
+    setTxStatus('active');
   };
 
   // Simpan Transaksi (Bisa Baru atau Perbarui yang Diedit)
@@ -359,6 +364,7 @@ export default function TransaksiPage() {
         paymentMethod,
         amountPaid: amountPaid ? Number(amountPaid) : totalAmount,
         changeAmount,
+        status: txStatus,
         notes: notes.trim(),
         ...(isEdit ? {} : { createdAt: new Date().toISOString() })
       };
@@ -486,6 +492,26 @@ export default function TransaksiPage() {
           )}
 
           <form onSubmit={handleSaveTransaction}>
+            {/* Pilihan Jenis Sewa: Langsung atau Booking */}
+            <div style={{ marginBottom: '14px', background: 'var(--bg-input)', padding: '6px', borderRadius: '12px', display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setTxStatus('active')}
+                className={`tab-btn ${txStatus === 'active' ? 'active' : ''}`}
+                style={{ flex: 1, minHeight: '36px', fontSize: '12px', padding: '6px' }}
+              >
+                Sewa Langsung (Aktif)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTxStatus('booking')}
+                className={`tab-btn ${txStatus === 'booking' ? 'active' : ''}`}
+                style={{ flex: 1, minHeight: '36px', fontSize: '12px', padding: '6px' }}
+              >
+                Booking (Mulai Nanti)
+              </button>
+            </div>
+
             {/* 1. Referensi Unit Kendaraan */}
             <div className="form-group">
               <label className="form-label">Pilih Nomor Polisi Kendaraan *</label>
@@ -882,6 +908,12 @@ export default function TransaksiPage() {
         <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)' }}>
           RIWAYAT TRANSAKSI {!isLoading && `(${filteredTransactions.length})`}
         </span>
+        <Link 
+          href="/transaksi" 
+          style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
+        >
+          Menu Transaksi &rarr;
+        </Link>
       </div>
 
       {isLoading ? (
@@ -895,6 +927,7 @@ export default function TransaksiPage() {
       ) : (
         filteredTransactions.map((tx) => {
           const hours = tx.durationHours || (Number(tx.durationDays) || 1) * 24;
+          const st = getTransactionStatus(tx);
           return (
             <div
               key={tx.id}
@@ -904,6 +937,9 @@ export default function TransaksiPage() {
               <div className="item-top">
                 <span className="item-id">{tx.id}</span>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span className={`badge ${st.badgeClass}`} style={{ fontSize: '10px', fontWeight: '700' }}>
+                    {st.label}
+                  </span>
                   <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1', fontWeight: '700' }}>
                     {hours} Jam
                   </span>
