@@ -1,0 +1,29 @@
+{
+  "name": "pos-rental-motor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplikasi POS Rental Motor Mobile-First siap konversi Android (PWA / Capacitor)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
+    "start": "next start",
+    "export": "next build",
+    "cap:sync": "next build && npx cap sync android",
+    "cap:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "html2canvas": "^1.4.1",
+    "lucide-react": "^1.47.0",
+    "next": "^14.2.15",
+    "prisma": "^5.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  }
+}

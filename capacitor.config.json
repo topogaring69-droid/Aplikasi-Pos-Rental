@@ -1,0 +1,13 @@
+{
+  "appId": "com.posrental.motor",
+  "appName": "POS Rental Motor",
+  "webDir": "out",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}
