@@ -23,12 +23,16 @@ import {
 } from 'lucide-react';
 import { 
   fetchTransactions, 
+  getTransactions,
   saveTransaction, 
   deleteTransaction, 
   fetchFleet, 
+  getFleet,
   fetchCustomers,
-  saveCustomer,
+  getCustomers,
+  saveCustomer, 
   fetchSettings, 
+  getSettings,
   getTransactionStatus,
   formatRupiah, 
   formatDateTime 
@@ -46,11 +50,11 @@ const formatToInput = (d) => {
 };
 
 export default function TransaksiPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [fleet, setFleet] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [settings, setSettings] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [transactions, setTransactions] = useState(() => getTransactions());
+  const [fleet, setFleet] = useState(() => getFleet());
+  const [customers, setCustomers] = useState(() => getCustomers());
+  const [settings, setSettings] = useState(() => getSettings());
+  const [isLoading, setIsLoading] = useState(() => getTransactions().length === 0 && getFleet().length === 0);
   const [search, setSearch] = useState('');
   
   // State Form Transaksi (Mode Buat Baru vs Mode Edit)
@@ -99,17 +103,18 @@ export default function TransaksiPage() {
 
   const loadData = async () => {
     try {
-      const [txList, fleetList, custList, sett] = await Promise.all([
-        fetchTransactions(),
-        fetchFleet(),
-        fetchCustomers(),
-        fetchSettings()
-      ]);
-      setTransactions(txList);
-      setFleet(fleetList);
-      setCustomers(custList);
-      setSettings(sett);
-    } finally {
+      // 1. Fokus cepat kasir: transaksi & armada
+      const txPromise = fetchTransactions();
+      const fleetPromise = fetchFleet();
+      const [txList, fleetList] = await Promise.all([txPromise, fleetPromise]);
+      if (Array.isArray(txList)) setTransactions(txList);
+      if (Array.isArray(fleetList)) setFleet(fleetList);
+      setIsLoading(false);
+
+      // 2. Muat data pelanggan & pengaturan secara non-blocking
+      fetchCustomers().then((c) => Array.isArray(c) && setCustomers(c)).catch(() => {});
+      fetchSettings().then((s) => s && setSettings(s)).catch(() => {});
+    } catch {
       setIsLoading(false);
     }
   };

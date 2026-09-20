@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { 
   fetchSettings, 
+  getSettings,
   saveSettings, 
   exportAllData, 
   importAllData 
@@ -31,23 +32,24 @@ import {
 import { showToast, showConfirm } from '../../lib/sweetalert';
 
 export default function PengaturanPage() {
-  const [settings, setSettings] = useState(null);
+  const initial = getSettings();
+  const [settings, setSettings] = useState(initial);
   const [isSaving, setIsSaving] = useState(false);
 
   // Form Profile & Keamanan
-  const [cashierName, setCashierName] = useState('');
-  const [role, setRole] = useState('Kasir Utama');
-  const [isPinEnabled, setIsPinEnabled] = useState(false);
-  const [pin, setPin] = useState('');
+  const [cashierName, setCashierName] = useState(initial?.cashierName || '');
+  const [role, setRole] = useState(initial?.role || 'Kasir Utama');
+  const [isPinEnabled, setIsPinEnabled] = useState(Boolean(initial?.isPinEnabled));
+  const [pin, setPin] = useState(initial?.pin || '');
 
   // Form Pengaturan Struk
-  const [storeName, setStoreName] = useState('');
-  const [tagline, setTagline] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
-  const [footerNote, setFooterNote] = useState('');
-  const [paperSize, setPaperSize] = useState('58mm');
+  const [storeName, setStoreName] = useState(initial?.storeName || '');
+  const [tagline, setTagline] = useState(initial?.tagline || '');
+  const [address, setAddress] = useState(initial?.address || '');
+  const [phone, setPhone] = useState(initial?.phone || '');
+  const [logoUrl, setLogoUrl] = useState(initial?.logoUrl || '');
+  const [footerNote, setFooterNote] = useState(initial?.footerNote || '');
+  const [paperSize, setPaperSize] = useState(initial?.paperSize || '58mm');
 
   // Google Drive Cloud Storage Integration
   const [gdriveStatus, setGdriveStatus] = useState({ connected: false, email: null, loading: true });

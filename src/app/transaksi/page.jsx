@@ -4,8 +4,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   fetchTransactions, 
+  getTransactions,
   fetchFleet, 
+  getFleet,
   fetchSettings, 
+  getSettings,
   activateTransaction, 
   completeTransaction, 
   deleteTransaction, 
@@ -19,10 +22,10 @@ import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 
 export default function TransaksiPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [fleet, setFleet] = useState([]);
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState(() => getTransactions());
+  const [fleet, setFleet] = useState(() => getFleet());
+  const [settings, setSettings] = useState(() => getSettings());
+  const [loading, setLoading] = useState(() => getTransactions().length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all, booking, aktif, hampir-selesai, terlambat, selesai
   const [processingId, setProcessingId] = useState(null);
@@ -33,17 +36,16 @@ export default function TransaksiPage() {
 
   const loadData = async () => {
     try {
-      const [txList, fleetList, settingData] = await Promise.all([
-        fetchTransactions(),
-        fetchFleet(),
-        fetchSettings()
-      ]);
-      setTransactions(txList || []);
-      setFleet(fleetList || []);
-      setSettings(settingData || null);
+      // 1. Fokus cepat: muat transaksi utama
+      const txList = await fetchTransactions();
+      if (Array.isArray(txList)) setTransactions(txList);
+      setLoading(false);
+
+      // 2. Muat referensi armada & pengaturan di latar belakang tanpa memblokir
+      fetchFleet().then((f) => Array.isArray(f) && setFleet(f)).catch(() => {});
+      fetchSettings().then((s) => s && setSettings(s)).catch(() => {});
     } catch (err) {
       console.error('Gagal memuat transaksi:', err);
-    } finally {
       setLoading(false);
     }
   };

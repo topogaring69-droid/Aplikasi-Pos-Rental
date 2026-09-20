@@ -10,32 +10,136 @@ const KEYS = {
 
 const isBrowser = typeof window !== 'undefined';
 
+// In-Memory Cache dengan TTL 30 detik & In-Flight Request Deduplication
+const memCache = {
+  [KEYS.CUSTOMERS]: { data: null, timestamp: 0 },
+  [KEYS.FLEET]: { data: null, timestamp: 0 },
+  [KEYS.TRANSACTIONS]: { data: null, timestamp: 0 },
+  [KEYS.EXPENSES]: { data: null, timestamp: 0 },
+  [KEYS.SETTINGS]: { data: null, timestamp: 0 },
+};
+const inFlightRequests = {};
+const CACHE_TTL = 30000; // 30 detik data dianggap fresh
+
+export function invalidateCache(key) {
+  if (key && memCache[key]) {
+    memCache[key].timestamp = 0;
+  } else if (!key) {
+    Object.keys(memCache).forEach((k) => {
+      memCache[k].timestamp = 0;
+    });
+  }
+}
+
+// ==================== PRELOAD & PREFETCH UTILS ====================
+
+/**
+ * Preload seluruh data menu secara bertahap saat browser idle (background)
+ */
+export function preloadAppData(activeRoute = '/') {
+  if (!isBrowser) return;
+
+  const schedule = (cb, delay = 0) => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(() => setTimeout(cb, delay));
+    } else {
+      setTimeout(cb, delay);
+    }
+  };
+
+  const tasks = [
+    { key: KEYS.FLEET, fetcher: fetchFleet, path: '/armada' },
+    { key: KEYS.CUSTOMERS, fetcher: fetchCustomers, path: '/pelanggan' },
+    { key: KEYS.TRANSACTIONS, fetcher: fetchTransactions, path: '/transaksi' },
+    { key: KEYS.EXPENSES, fetcher: fetchExpenses, path: '/pengeluaran' },
+    { key: KEYS.SETTINGS, fetcher: fetchSettings, path: '/pengaturan' }
+  ];
+
+  let cumulativeDelay = 350;
+  tasks.forEach((task) => {
+    // Lewati menu yang sedang aktif saat ini
+    if (activeRoute !== task.path) {
+      schedule(() => {
+        task.fetcher().catch(() => {});
+      }, cumulativeDelay);
+      cumulativeDelay += 300;
+    }
+  });
+}
+
+/**
+ * Prefetch instan saat user hover atau sentuh tombol navigasi
+ */
+export function prefetchMenuData(targetHref) {
+  if (!isBrowser || !targetHref) return;
+  if (targetHref === '/' || targetHref.startsWith('/transaksi')) {
+    fetchTransactions().catch(() => {});
+  }
+  if (targetHref.startsWith('/pelanggan')) {
+    fetchCustomers().catch(() => {});
+  } else if (targetHref.startsWith('/armada')) {
+    fetchFleet().catch(() => {});
+  } else if (targetHref.startsWith('/pengeluaran')) {
+    fetchExpenses().catch(() => {});
+  } else if (targetHref.startsWith('/laporan')) {
+    fetchTransactions().catch(() => {});
+    fetchExpenses().catch(() => {});
+  } else if (targetHref.startsWith('/pengaturan')) {
+    fetchSettings().catch(() => {});
+  }
+}
+
 // ==================== PELANGGAN (CUSTOMERS) ====================
 
-export async function fetchCustomers() {
+export async function fetchCustomers(forceRefresh = false) {
   if (!isBrowser) return [];
-  try {
-    const res = await fetch('/api/pelanggan');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(json.data));
-        return json.data;
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal fetch pelanggan dari API, fallback cache lokal:', e);
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.CUSTOMERS].data && (Date.now() - memCache[KEYS.CUSTOMERS].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.CUSTOMERS].data;
   }
-  return getCustomers();
+
+  // 2. Request deduplication (jika sedang fetching, gunakan promise yang sama)
+  if (inFlightRequests[KEYS.CUSTOMERS]) {
+    return inFlightRequests[KEYS.CUSTOMERS];
+  }
+
+  inFlightRequests[KEYS.CUSTOMERS] = (async () => {
+    try {
+      const res = await fetch('/api/pelanggan');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(json.data));
+          memCache[KEYS.CUSTOMERS] = { data: json.data, timestamp: Date.now() };
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch pelanggan dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.CUSTOMERS];
+    }
+    const fallback = getCustomers();
+    memCache[KEYS.CUSTOMERS] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.CUSTOMERS];
 }
 
 export function getCustomers() {
   if (!isBrowser) return [];
+  if (memCache[KEYS.CUSTOMERS].data) {
+    return memCache[KEYS.CUSTOMERS].data;
+  }
   try {
     const data = localStorage.getItem(KEYS.CUSTOMERS);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    memCache[KEYS.CUSTOMERS].data = list;
+    return list;
   } catch {
     return [];
   }
@@ -65,6 +169,7 @@ export async function saveCustomer(cust) {
     list.unshift(saved);
   }
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
+  memCache[KEYS.CUSTOMERS] = { data: list, timestamp: Date.now() };
   return list;
 }
 
@@ -78,35 +183,61 @@ export async function deleteCustomer(id) {
 
   const list = getCustomers().filter((c) => c.id !== id);
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
+  memCache[KEYS.CUSTOMERS] = { data: list, timestamp: Date.now() };
   return list;
 }
 
 // ==================== ARMADA (FLEET) ====================
 
-export async function fetchFleet() {
+export async function fetchFleet(forceRefresh = false) {
   if (!isBrowser) return [];
-  try {
-    const res = await fetch('/api/armada');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        localStorage.setItem(KEYS.FLEET, JSON.stringify(json.data));
-        return json.data;
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal fetch armada dari API, fallback cache lokal:', e);
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.FLEET].data && (Date.now() - memCache[KEYS.FLEET].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.FLEET].data;
   }
-  return getFleet();
+
+  // 2. Request deduplication
+  if (inFlightRequests[KEYS.FLEET]) {
+    return inFlightRequests[KEYS.FLEET];
+  }
+
+  inFlightRequests[KEYS.FLEET] = (async () => {
+    try {
+      const res = await fetch('/api/armada');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem(KEYS.FLEET, JSON.stringify(json.data));
+          memCache[KEYS.FLEET] = { data: json.data, timestamp: Date.now() };
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch armada dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.FLEET];
+    }
+    const fallback = getFleet();
+    memCache[KEYS.FLEET] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.FLEET];
 }
 
 export function getFleet() {
   if (!isBrowser) return [];
+  if (memCache[KEYS.FLEET].data) {
+    return memCache[KEYS.FLEET].data;
+  }
   try {
     const data = localStorage.getItem(KEYS.FLEET);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    memCache[KEYS.FLEET].data = list;
+    return list;
   } catch {
     return [];
   }
@@ -136,6 +267,7 @@ export async function saveFleetItem(item) {
     list.unshift(saved);
   }
   localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
+  memCache[KEYS.FLEET] = { data: list, timestamp: Date.now() };
   return list;
 }
 
@@ -146,6 +278,7 @@ export async function updateVehicleStatus(nopol, status) {
   if (index >= 0) {
     list[index].status = status;
     localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
+    memCache[KEYS.FLEET] = { data: list, timestamp: Date.now() };
     try {
       await fetch('/api/armada', {
         method: 'PUT',
@@ -166,35 +299,61 @@ export async function deleteFleetItem(id) {
 
   const list = getFleet().filter((m) => m.id !== id);
   localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
+  memCache[KEYS.FLEET] = { data: list, timestamp: Date.now() };
   return list;
 }
 
 // ==================== TRANSAKSI ====================
 
-export async function fetchTransactions() {
+export async function fetchTransactions(forceRefresh = false) {
   if (!isBrowser) return [];
-  try {
-    const res = await fetch('/api/transaksi');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(json.data));
-        return json.data;
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal fetch transaksi dari API, fallback cache lokal:', e);
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.TRANSACTIONS].data && (Date.now() - memCache[KEYS.TRANSACTIONS].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.TRANSACTIONS].data;
   }
-  return getTransactions();
+
+  // 2. Request deduplication
+  if (inFlightRequests[KEYS.TRANSACTIONS]) {
+    return inFlightRequests[KEYS.TRANSACTIONS];
+  }
+
+  inFlightRequests[KEYS.TRANSACTIONS] = (async () => {
+    try {
+      const res = await fetch('/api/transaksi');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(json.data));
+          memCache[KEYS.TRANSACTIONS] = { data: json.data, timestamp: Date.now() };
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch transaksi dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.TRANSACTIONS];
+    }
+    const fallback = getTransactions();
+    memCache[KEYS.TRANSACTIONS] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.TRANSACTIONS];
 }
 
 export function getTransactions() {
   if (!isBrowser) return [];
+  if (memCache[KEYS.TRANSACTIONS].data) {
+    return memCache[KEYS.TRANSACTIONS].data;
+  }
   try {
     const data = localStorage.getItem(KEYS.TRANSACTIONS);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    memCache[KEYS.TRANSACTIONS].data = list;
+    return list;
   } catch {
     return [];
   }
@@ -226,6 +385,7 @@ export async function saveTransaction(tx) {
     list.unshift(saved);
   }
   localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+  memCache[KEYS.TRANSACTIONS] = { data: list, timestamp: Date.now() };
 
   // Jika nopol ganti saat edit, kembalikan nopol lama ke available
   if (oldItem && oldItem.nopol && oldItem.nopol.toUpperCase() !== saved.nopol?.toUpperCase()) {
@@ -339,6 +499,7 @@ export async function activateTransaction(id) {
   if (idx >= 0) {
     list[idx] = updated;
     localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+    memCache[KEYS.TRANSACTIONS] = { data: list, timestamp: Date.now() };
   }
 
   if (updated?.nopol) {
@@ -367,6 +528,7 @@ export async function completeTransaction(id, extraNotes = '') {
   if (idx >= 0) {
     list[idx] = updated;
     localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+    memCache[KEYS.TRANSACTIONS] = { data: list, timestamp: Date.now() };
   }
 
   if (updated?.nopol) {
@@ -391,35 +553,61 @@ export async function deleteTransaction(id) {
   }
   const filtered = list.filter((t) => t.id !== id);
   localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(filtered));
+  memCache[KEYS.TRANSACTIONS] = { data: filtered, timestamp: Date.now() };
   return filtered;
 }
 
 // ==================== PENGELUARAN ====================
 
-export async function fetchExpenses() {
+export async function fetchExpenses(forceRefresh = false) {
   if (!isBrowser) return [];
-  try {
-    const res = await fetch('/api/pengeluaran');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        localStorage.setItem(KEYS.EXPENSES, JSON.stringify(json.data));
-        return json.data;
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal fetch pengeluaran dari API, fallback cache lokal:', e);
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.EXPENSES].data && (Date.now() - memCache[KEYS.EXPENSES].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.EXPENSES].data;
   }
-  return getExpenses();
+
+  // 2. Request deduplication
+  if (inFlightRequests[KEYS.EXPENSES]) {
+    return inFlightRequests[KEYS.EXPENSES];
+  }
+
+  inFlightRequests[KEYS.EXPENSES] = (async () => {
+    try {
+      const res = await fetch('/api/pengeluaran');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem(KEYS.EXPENSES, JSON.stringify(json.data));
+          memCache[KEYS.EXPENSES] = { data: json.data, timestamp: Date.now() };
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch pengeluaran dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.EXPENSES];
+    }
+    const fallback = getExpenses();
+    memCache[KEYS.EXPENSES] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.EXPENSES];
 }
 
 export function getExpenses() {
   if (!isBrowser) return [];
+  if (memCache[KEYS.EXPENSES].data) {
+    return memCache[KEYS.EXPENSES].data;
+  }
   try {
     const data = localStorage.getItem(KEYS.EXPENSES);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    memCache[KEYS.EXPENSES].data = list;
+    return list;
   } catch {
     return [];
   }
@@ -449,12 +637,11 @@ export async function saveExpense(exp, file = null) {
     res = await fetch('/api/pengeluaran', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(exp),
+      body: JSON.stringify(exp)
     });
   }
 
   const json = await res.json().catch(() => ({}));
-
   if (!res.ok || !json.success) {
     throw new Error(json.error || `Gagal menyimpan pengeluaran (${res.status})`);
   }
@@ -463,7 +650,6 @@ export async function saveExpense(exp, file = null) {
     savedItem = json.data;
   }
 
-  // Perbarui cache lokal browser setelah backend sukses
   const list = getExpenses();
   const index = list.findIndex((e) => e.id === savedItem.id);
   if (index >= 0) {
@@ -472,6 +658,7 @@ export async function saveExpense(exp, file = null) {
     list.unshift(savedItem);
   }
   localStorage.setItem(KEYS.EXPENSES, JSON.stringify(list));
+  memCache[KEYS.EXPENSES] = { data: list, timestamp: Date.now() };
 
   return savedItem;
 }
@@ -480,6 +667,7 @@ export async function deleteExpense(id) {
   if (!isBrowser) return;
   const list = getExpenses().filter((e) => e.id !== id);
   localStorage.setItem(KEYS.EXPENSES, JSON.stringify(list));
+  memCache[KEYS.EXPENSES] = { data: list, timestamp: Date.now() };
 
   try {
     await fetch(`/api/pengeluaran?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -491,31 +679,57 @@ export async function deleteExpense(id) {
 
 // ==================== PENGATURAN ====================
 
-export async function fetchSettings() {
+export async function fetchSettings(forceRefresh = false) {
   if (!isBrowser) return initialSettings;
-  try {
-    const res = await fetch('/api/pengaturan');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(json.data));
-        return json.data;
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal fetch pengaturan dari API, fallback cache lokal:', e);
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.SETTINGS].data && (Date.now() - memCache[KEYS.SETTINGS].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.SETTINGS].data;
   }
-  return getSettings();
+
+  // 2. Request deduplication
+  if (inFlightRequests[KEYS.SETTINGS]) {
+    return inFlightRequests[KEYS.SETTINGS];
+  }
+
+  inFlightRequests[KEYS.SETTINGS] = (async () => {
+    try {
+      const res = await fetch('/api/pengaturan');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          localStorage.setItem(KEYS.SETTINGS, JSON.stringify(json.data));
+          const merged = { ...initialSettings, ...json.data };
+          memCache[KEYS.SETTINGS] = { data: merged, timestamp: Date.now() };
+          return merged;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch pengaturan dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.SETTINGS];
+    }
+    const fallback = getSettings();
+    memCache[KEYS.SETTINGS] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.SETTINGS];
 }
 
 export function getSettings() {
   if (!isBrowser) return initialSettings;
+  if (memCache[KEYS.SETTINGS].data) {
+    return memCache[KEYS.SETTINGS].data;
+  }
   try {
     const data = localStorage.getItem(KEYS.SETTINGS);
     if (!data) {
       return initialSettings;
     }
-    return { ...initialSettings, ...JSON.parse(data) };
+    const merged = { ...initialSettings, ...JSON.parse(data) };
+    memCache[KEYS.SETTINGS].data = merged;
+    return merged;
   } catch {
     return initialSettings;
   }
@@ -523,18 +737,20 @@ export function getSettings() {
 
 export async function saveSettings(settings) {
   if (!isBrowser) return;
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+  const merged = { ...initialSettings, ...settings };
+  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(merged));
+  memCache[KEYS.SETTINGS] = { data: merged, timestamp: Date.now() };
 
   try {
     await fetch('/api/pengaturan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
+      body: JSON.stringify(merged)
     });
   } catch (e) {
     console.warn('Sync pengaturan ke server tertunda:', e);
   }
-  return settings;
+  return merged;
 }
 
 // ==================== FORMATTER UTILS ====================

@@ -19,8 +19,11 @@ import {
 } from 'lucide-react';
 import { 
   fetchTransactions, 
+  getTransactions,
   fetchExpenses, 
+  getExpenses,
   fetchSettings, 
+  getSettings,
   formatRupiah, 
   formatDateTime,
   formatDateOnly,
@@ -31,9 +34,10 @@ import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 
 export default function LaporanPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [settings, setSettings] = useState(null);
+  const [transactions, setTransactions] = useState(() => getTransactions());
+  const [expenses, setExpenses] = useState(() => getExpenses());
+  const [settings, setSettings] = useState(() => getSettings());
+  const [isLoading, setIsLoading] = useState(() => getTransactions().length === 0 && getExpenses().length === 0);
 
   // Tab: 'pemasukan' | 'pengeluaran'
   const [activeTab, setActiveTab] = useState('pemasukan');
@@ -57,14 +61,18 @@ export default function LaporanPage() {
   }, []);
 
   const loadData = async () => {
-    const [txList, expList, sett] = await Promise.all([
-      fetchTransactions(),
-      fetchExpenses(),
-      fetchSettings()
-    ]);
-    setTransactions(txList);
-    setExpenses(expList);
-    setSettings(sett);
+    try {
+      const [txList, expList] = await Promise.all([
+        fetchTransactions(),
+        fetchExpenses()
+      ]);
+      if (Array.isArray(txList)) setTransactions(txList);
+      if (Array.isArray(expList)) setExpenses(expList);
+      setIsLoading(false);
+      fetchSettings().then((sett) => sett && setSettings(sett)).catch(() => {});
+    } catch {
+      setIsLoading(false);
+    }
   };
 
   const filterByDate = (itemDateStr) => {

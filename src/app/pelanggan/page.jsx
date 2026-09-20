@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { 
   fetchCustomers, 
+  getCustomers,
   saveCustomer, 
   deleteCustomer 
 } from '../../lib/storage';
@@ -26,9 +27,9 @@ import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
 
 export default function PelangganPage() {
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState(() => getCustomers());
   const [search, setSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getCustomers().length === 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
@@ -49,7 +50,9 @@ export default function PelangganPage() {
   const loadData = async () => {
     try {
       const data = await fetchCustomers();
-      setCustomers(data);
+      if (Array.isArray(data)) {
+        setCustomers(data);
+      }
     } finally {
       setIsLoading(false);
     }

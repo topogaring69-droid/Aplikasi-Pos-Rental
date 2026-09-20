@@ -6,7 +6,7 @@ import Header from './Header';
 import BottomNav from './BottomNav';
 import PinLockModal from './PinLockModal';
 import NotFoundView from './NotFoundView';
-import { getSettings } from '../lib/storage';
+import { getSettings, preloadAppData } from '../lib/storage';
 import { showConfirm } from '../lib/sweetalert';
 
 export default function AppClientWrapper({ children }) {
@@ -51,6 +51,8 @@ export default function AppClientWrapper({ children }) {
         if (data.authenticated && data.user) {
           setCurrentUser(data.user);
           setAuthChecked(true);
+          // Jalankan background preload untuk memanaskan data rute lain
+          preloadAppData(pathname);
           // Jika sudah login dan membuka rute /login, arahkan ke beranda
           if (isLoginPage) {
             router.push('/');

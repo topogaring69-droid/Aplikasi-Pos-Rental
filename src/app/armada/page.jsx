@@ -20,9 +20,11 @@ import {
 } from 'lucide-react';
 import { 
   fetchFleet, 
+  getFleet,
   saveFleetItem, 
   deleteFleetItem, 
   fetchSettings,
+  getSettings,
   formatRupiah 
 } from '../../lib/storage';
 import { exportFleetToCSV, exportFleetToPrintable } from '../../lib/fleetExport';
@@ -30,11 +32,11 @@ import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
 
 export default function ArmadaPage() {
-  const [fleet, setFleet] = useState([]);
-  const [settings, setSettings] = useState(null);
+  const [fleet, setFleet] = useState(() => getFleet());
+  const [settings, setSettings] = useState(() => getSettings());
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [search, setSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getFleet().length === 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
@@ -56,10 +58,11 @@ export default function ArmadaPage() {
 
   const loadFleet = async () => {
     try {
-      const [list, sett] = await Promise.all([fetchFleet(), fetchSettings()]);
-      setFleet(list);
-      setSettings(sett);
-    } finally {
+      const list = await fetchFleet();
+      if (Array.isArray(list)) setFleet(list);
+      setIsLoading(false);
+      fetchSettings().then((sett) => sett && setSettings(sett)).catch(() => {});
+    } catch {
       setIsLoading(false);
     }
   };

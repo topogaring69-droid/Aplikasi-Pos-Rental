@@ -20,9 +20,11 @@ import {
 } from 'lucide-react';
 import { 
   fetchExpenses, 
+  getExpenses,
   saveExpense, 
   deleteExpense, 
   fetchFleet, 
+  getFleet,
   formatRupiah, 
   formatDateTime,
   getGdriveReceiptUrl
@@ -31,8 +33,8 @@ import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
 
 export default function PengeluaranPage() {
-  const [expenses, setExpenses] = useState([]);
-  const [fleet, setFleet] = useState([]);
+  const [expenses, setExpenses] = useState(() => getExpenses());
+  const [fleet, setFleet] = useState(() => getFleet());
   const [search, setSearch] = useState('');
 
   // Form State
@@ -52,7 +54,7 @@ export default function PengeluaranPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => getExpenses().length === 0);
 
   // Modal Zoom Bukti Nota
   const [zoomPhoto, setZoomPhoto] = useState(null);
@@ -64,13 +66,11 @@ export default function PengeluaranPage() {
 
   const loadData = async () => {
     try {
-      const [expList, fleetList] = await Promise.all([
-        fetchExpenses(),
-        fetchFleet()
-      ]);
-      setExpenses(expList);
-      setFleet(fleetList);
-    } finally {
+      const expList = await fetchExpenses();
+      if (Array.isArray(expList)) setExpenses(expList);
+      setIsLoading(false);
+      fetchFleet().then((fleetList) => Array.isArray(fleetList) && setFleet(fleetList)).catch(() => {});
+    } catch {
       setIsLoading(false);
     }
   };

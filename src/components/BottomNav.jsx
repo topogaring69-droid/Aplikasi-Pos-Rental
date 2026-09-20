@@ -12,6 +12,7 @@ import {
   Bike, 
   Settings 
 } from 'lucide-react';
+import { prefetchMenuData } from '../lib/storage';
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -71,6 +72,8 @@ export default function BottomNav() {
             href={item.href}
             className={`nav-item ${item.active ? 'active' : ''}`}
             style={{ padding: '2px 2px', fontSize: '9.5px', flex: 1, minWidth: 0 }}
+            onMouseEnter={() => prefetchMenuData(item.href)}
+            onTouchStart={() => prefetchMenuData(item.href)}
           >
             <div className="nav-icon-wrap" style={{ width: '28px', height: '28px' }}>
               <Icon size={16} strokeWidth={item.active ? 2.5 : 2} />
