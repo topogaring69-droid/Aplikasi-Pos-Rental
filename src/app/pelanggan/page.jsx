@@ -21,13 +21,17 @@ import {
   fetchCustomers, 
   getCustomers,
   saveCustomer, 
-  deleteCustomer 
+  deleteCustomer,
+  fetchSettings,
+  getSettings 
 } from '../../lib/storage';
+import { exportCustomersToExcel } from '../../lib/excelExport';
 import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
 
 export default function PelangganPage() {
   const [customers, setCustomers] = useState(() => getCustomers());
+  const [settings, setSettings] = useState(() => getSettings());
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(() => getCustomers().length === 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,6 +57,7 @@ export default function PelangganPage() {
       if (Array.isArray(data)) {
         setCustomers(data);
       }
+      fetchSettings().then((s) => s && setSettings(s)).catch(() => {});
     } finally {
       setIsLoading(false);
     }
@@ -145,11 +150,11 @@ export default function PelangganPage() {
   return (
     <div>
 
-      {/* Header & Tombol Tambah */}
-      <div style={{ marginBottom: '16px' }}>
+      {/* Header & Tombol Tambah + Ekspor */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', marginBottom: '16px' }}>
         <button
           type="button"
-          className="btn btn-primary btn-block"
+          className="btn btn-primary"
           disabled={isSubmitting}
           onClick={() => {
             if (showForm) {
@@ -158,10 +163,20 @@ export default function PelangganPage() {
               handleOpenNew();
             }
           }}
-          style={{ gap: '10px', fontSize: '15px' }}
+          style={{ gap: '10px', fontSize: '14px', width: '100%' }}
         >
-          {showForm && <X size={20} />}
+          {showForm && <X size={18} />}
           <span>{showForm ? 'Tutup Formulir' : 'Tambah Pelanggan Baru'}</span>
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-outline"
+          onClick={() => exportCustomersToExcel(filteredCustomers, settings)}
+          style={{ fontSize: '13px', fontWeight: 700, padding: '0 16px', background: '#ffffff' }}
+          title="Ekspor daftar pelanggan ke file Excel (.xlsx)"
+        >
+          Ekspor Excel
         </button>
       </div>
 

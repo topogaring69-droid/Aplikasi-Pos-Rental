@@ -28,6 +28,7 @@ import {
   formatRupiah 
 } from '../../lib/storage';
 import { exportFleetToCSV, exportFleetToPrintable } from '../../lib/fleetExport';
+import { exportFleetToExcel } from '../../lib/excelExport';
 import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
 
@@ -300,12 +301,12 @@ export default function ArmadaPage() {
                 className="btn btn-secondary btn-block btn-sm"
                 onClick={() => {
                   setShowExportMenu(false);
-                  exportFleetToCSV(fleet);
+                  exportFleetToExcel(fleet, settings);
                 }}
                 style={{ justifyContent: 'flex-start', gap: '8px', marginBottom: '6px', textAlign: 'left', width: '100%' }}
               >
                 <Download size={14} color="var(--primary)" />
-                <span>Unduh Excel (.CSV)</span>
+                <span>Unduh Excel (.xlsx)</span>
               </button>
 
               <button

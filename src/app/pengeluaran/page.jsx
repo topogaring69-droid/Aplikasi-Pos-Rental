@@ -25,16 +25,21 @@ import {
   deleteExpense, 
   fetchFleet, 
   getFleet,
+  fetchSettings,
+  getSettings,
   formatRupiah, 
   formatDateTime,
   getGdriveReceiptUrl
 } from '../../lib/storage';
 import { showToast, showConfirm } from '../../lib/sweetalert';
 import { SkeletonList } from '../../components/Skeleton';
+import SearchableSelect from '../../components/SearchableSelect';
+import { exportExpensesToExcel } from '../../lib/excelExport';
 
 export default function PengeluaranPage() {
   const [expenses, setExpenses] = useState(() => getExpenses());
   const [fleet, setFleet] = useState(() => getFleet());
+  const [settings, setSettings] = useState(() => getSettings());
   const [search, setSearch] = useState('');
 
   // Form State
@@ -70,6 +75,7 @@ export default function PengeluaranPage() {
       if (Array.isArray(expList)) setExpenses(expList);
       setIsLoading(false);
       fetchFleet().then((fleetList) => Array.isArray(fleetList) && setFleet(fleetList)).catch(() => {});
+      fetchSettings().then((sett) => sett && setSettings(sett)).catch(() => {});
     } catch {
       setIsLoading(false);
     }
@@ -232,11 +238,11 @@ export default function PengeluaranPage() {
   return (
     <div>
 
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', marginBottom: '16px' }}>
         <button
           type="button"
           disabled={isSubmitting}
-          className="btn btn-primary btn-block"
+          className="btn btn-primary"
           onClick={() => {
             if (showForm) {
               setShowForm(false);
@@ -244,10 +250,20 @@ export default function PengeluaranPage() {
               handleOpenNew();
             }
           }}
-          style={{ gap: '10px', fontSize: '15px' }}
+          style={{ gap: '10px', fontSize: '14px', width: '100%' }}
         >
-          {showForm && <X size={20} />}
+          {showForm && <X size={18} />}
           <span>{showForm ? 'Tutup Formulir' : 'Catat Pengeluaran Baru'}</span>
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-outline"
+          onClick={() => exportExpensesToExcel(filteredExpenses, settings)}
+          style={{ fontSize: '13px', fontWeight: 700, padding: '0 16px', background: '#ffffff' }}
+          title="Ekspor catatan pengeluaran ke file Excel (.xlsx)"
+        >
+          Ekspor Excel
         </button>
       </div>
 
@@ -312,27 +328,16 @@ export default function PengeluaranPage() {
             {isVehicleRelated && (
               <div className="form-group">
                 <label className="form-label">Nomor Polisi Kendaraan *</label>
-                <select
-                  className="form-control"
+                <SearchableSelect
+                  options={fleet}
                   value={nopol}
-                  onChange={(e) => setNopol(e.target.value)}
-                  style={{ marginBottom: '8px' }}
-                >
-                  <option value="">-- Pilih Armada Terdaftar --</option>
-                  {fleet.map((m) => (
-                    <option key={m.id} value={m.nopol}>
-                      {m.nopol} - {m.brand} {m.model}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Atau masukkan nopol manual..."
-                  value={nopol}
-                  onChange={(e) => setNopol(e.target.value.toUpperCase())}
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                  required={isVehicleRelated}
+                  onChange={(val) => setNopol(val ? val.toUpperCase() : '')}
+                  displayKey="nopol"
+                  secondaryKey="model"
+                  placeholder="Cari nopol atau ketik nopol baru..."
+                  searchPlaceholder="Ketik nopol / merk / tipe..."
+                  allowCustom={true}
+                  customLabel="Gunakan nopol baru"
                 />
               </div>
             )}

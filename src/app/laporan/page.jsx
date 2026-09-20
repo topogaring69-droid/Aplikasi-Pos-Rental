@@ -30,6 +30,7 @@ import {
   getGdriveReceiptUrl
 } from '../../lib/storage';
 import { exportReportToPrintable } from '../../lib/pdfExport';
+import { exportReportToExcel } from '../../lib/excelExport';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 
@@ -160,6 +161,18 @@ export default function LaporanPage() {
     });
   };
 
+  const handleExportExcel = () => {
+    exportReportToExcel({
+      settings,
+      periodLabel: getPeriodLabel(),
+      totalIncome,
+      totalExpense,
+      netProfit,
+      incomeList: filteredTransactions,
+      expenseList: filteredExpenses
+    });
+  };
+
   const handleDownloadReceipt = async (photoUrl, expId = 'EXP') => {
     if (!photoUrl) return;
     try {
@@ -190,15 +203,26 @@ export default function LaporanPage() {
           <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Laporan Keuangan</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Arus Kas Pemasukan & Pengeluaran</p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={handleExportPDF}
-          style={{ gap: '6px' }}
-        >
-          <Download size={15} />
-          <span>Ekspor PDF</span>
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={handleExportExcel}
+            style={{ fontWeight: 700, background: '#ffffff' }}
+            title="Ekspor laporan keuangan lengkap ke Excel (.xlsx)"
+          >
+            Ekspor Excel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleExportPDF}
+            style={{ gap: '6px' }}
+          >
+            <Download size={15} />
+            <span>Ekspor PDF</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Periode */}

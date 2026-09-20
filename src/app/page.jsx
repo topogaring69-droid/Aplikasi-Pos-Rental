@@ -41,6 +41,8 @@ import ModalDetail from '../components/ModalDetail';
 import StrukModal from '../components/StrukModal';
 import { showToast, showConfirm } from '../lib/sweetalert';
 import { SkeletonList, SkeletonSearchBar } from '../components/Skeleton';
+import SearchableSelect from '../components/SearchableSelect';
+import { exportTransactionsToExcel } from '../lib/excelExport';
 
 // Helper format Date ke format input datetime-local: YYYY-MM-DDTHH:mm
 const formatToInput = (d) => {
@@ -519,31 +521,34 @@ export default function TransaksiPage() {
 
             {/* 1. Referensi Unit Kendaraan */}
             <div className="form-group">
-              <label className="form-label">Pilih Nomor Polisi Kendaraan *</label>
-              <select
-                className="form-control"
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label className="form-label" style={{ margin: 0 }}>Nomor Polisi Kendaraan *</label>
+                <span className="badge badge-success" style={{ fontSize: '10px' }}>
+                  {fleet.filter(f => f.status === 'available').length} Tersedia
+                </span>
+              </div>
+              <SearchableSelect
+                options={fleet}
                 value={nopol}
-                onChange={handleSelectMotor}
-              >
-                <option value="">-- Pilih dari Armada Terdaftar --</option>
-                {fleet.map((m) => (
-                  <option key={m.id} value={m.nopol}>
-                    {m.nopol} - {m.brand} {m.model} ({m.status === 'available' ? 'Tersedia' : m.status}) - {formatRupiah(m.dailyRate)}/24 Jam
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Atau ketik nopol manual (B 1234 XYZ)..."
-                value={nopol}
-                onChange={(e) => {
-                  const val = e.target.value.toUpperCase();
-                  setNopol(val);
-                  calculateRentalPrice(val, durationHours);
+                onChange={(val) => {
+                  const upper = (val || '').toUpperCase().trim();
+                  setNopol(upper);
+                  if (upper) {
+                    calculateRentalPrice(upper, durationHours);
+                  }
                 }}
-                style={{ marginTop: '8px', fontFamily: 'var(--font-mono)' }}
-                required
+                displayKey="nopol"
+                secondaryKey="model"
+                badgeKey="status"
+                badgeRenderer={(item) => (
+                  <span className={`badge ${item.status === 'available' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
+                    {item.status === 'available' ? 'Tersedia' : item.status}
+                  </span>
+                )}
+                placeholder="Cari nopol, model, atau ketik langsung..."
+                searchPlaceholder="Ketik nopol / merk / tipe..."
+                allowCustom={true}
+                customLabel="Gunakan nopol baru"
               />
             </div>
 
@@ -559,19 +564,33 @@ export default function TransaksiPage() {
                 </span>
               </div>
 
-              <select
-                className="form-control"
+              <SearchableSelect
+                options={customers}
                 value={selectedCustomerId}
-                onChange={handleSelectCustomer}
+                onChange={(val, item) => {
+                  if (item) {
+                    setSelectedCustomerId(item.id);
+                    setCustomerName(item.name);
+                    setCustomerPhone(item.phone || '');
+                    showToast(`Pelanggan "${item.name}" dipilih! Data terisi otomatis.`);
+                  } else {
+                    setSelectedCustomerId('');
+                    setCustomerName(val);
+                  }
+                }}
+                displayKey="name"
+                secondaryKey="phone"
+                badgeRenderer={(item) => (
+                  <span className="badge" style={{ fontSize: '10px' }}>
+                    {item.totalRentals || 0}x Sewa
+                  </span>
+                )}
+                placeholder="Ketik nama pelanggan untuk mencari atau buat baru..."
+                searchPlaceholder="Ketik nama pelanggan atau No. HP..."
+                allowCustom={true}
+                customLabel="Gunakan sebagai nama baru"
                 style={{ marginBottom: '8px' }}
-              >
-                <option value="">-- Cari / Pilih Pelanggan Yang Pernah Sewa --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ''} - {c.totalRentals || 0}x Sewa
-                  </option>
-                ))}
-              </select>
+              />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
                 <div>
@@ -913,12 +932,23 @@ export default function TransaksiPage() {
         <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)' }}>
           RIWAYAT TRANSAKSI {!isLoading && `(${filteredTransactions.length})`}
         </span>
-        <Link 
-          href="/transaksi" 
-          style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
-        >
-          Menu Transaksi &rarr;
-        </Link>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => exportTransactionsToExcel(filteredTransactions, fleet, settings)}
+            style={{ fontSize: '11px', padding: '4px 10px', background: '#ffffff', borderRadius: '8px', fontWeight: 600 }}
+            title="Ekspor ke Excel"
+          >
+            Ekspor Excel
+          </button>
+          <Link 
+            href="/transaksi" 
+            style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
+          >
+            Menu Transaksi &rarr;
+          </Link>
+        </div>
       </div>
 
       {isLoading ? (

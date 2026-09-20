@@ -20,6 +20,7 @@ import { showToast, showConfirm, showError } from '../../lib/sweetalert';
 import { SkeletonList, SkeletonSearchBar } from '../../components/Skeleton';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
+import { exportTransactionsToExcel } from '../../lib/excelExport';
 
 export default function TransaksiPage() {
   const [transactions, setTransactions] = useState(() => getTransactions());
@@ -216,13 +217,24 @@ export default function TransaksiPage() {
             Kelola status sewa, waktu pengembalian, dan armada rental
           </p>
         </div>
-        <Link 
-          href="/" 
-          className="btn btn-primary"
-          style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 700, borderRadius: '10px' }}
-        >
-          Sewa Baru
-        </Link>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => exportTransactionsToExcel(filteredTransactions, fleet, settings)}
+            className="btn btn-outline"
+            style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 700, borderRadius: '10px', background: '#ffffff' }}
+            title="Ekspor daftar transaksi ke file Excel (.xlsx)"
+          >
+            Ekspor Excel
+          </button>
+          <Link 
+            href="/" 
+            className="btn btn-primary"
+            style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 700, borderRadius: '10px' }}
+          >
+            Sewa Baru
+          </Link>
+        </div>
       </div>
 
       {/* 1. Tampilan Pertama: Pencarian Berdasarkan Nama Pelanggan */}
