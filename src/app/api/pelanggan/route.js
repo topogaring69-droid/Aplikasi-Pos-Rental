@@ -14,8 +14,10 @@ export async function GET() {
     // Seed data jika masih kosong
     if (customers.length === 0) {
       for (const c of initialCustomers) {
-        await prisma.customer.create({
-          data: {
+        await prisma.customer.upsert({
+          where: { id: c.id },
+          update: {},
+          create: {
             id: c.id,
             name: c.name,
             phone: c.phone || '',

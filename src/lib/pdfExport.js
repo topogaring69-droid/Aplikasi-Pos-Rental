@@ -1,4 +1,4 @@
-import { formatRupiah, formatDateTime, formatDateOnly } from './storage';
+import { formatRupiah, formatDateTime, formatDateOnly, getGdriveReceiptUrl } from './storage';
 
 export function exportReportToPrintable(data) {
   const {
@@ -281,7 +281,7 @@ export function exportReportToPrintable(data) {
         <th>Terkait Nopol</th>
         <th>Tanggal</th>
         <th>Keterangan</th>
-        <th style="text-align:center;">Bukti Nota</th>
+        <th style="text-align:center;">Lampiran Nota</th>
         <th class="text-right">Jumlah Biaya</th>
       </tr>
     </thead>
@@ -290,7 +290,9 @@ export function exportReportToPrintable(data) {
         expenseList.length === 0
           ? '<tr><td colspan="7" class="empty-row">Tidak ada pengeluaran pada periode ini.</td></tr>'
           : expenseList
-              .map((exp) => `
+              .map((exp) => {
+                const gdriveUrl = getGdriveReceiptUrl(exp);
+                return `
               <tr>
                 <td class="bold">${exp.id}</td>
                 <td><span style="display:inline-block;padding:2px 6px;background:#e2e8f0;border-radius:4px;font-size:11px;">${exp.category || 'Umum'}</span></td>
@@ -298,15 +300,17 @@ export function exportReportToPrintable(data) {
                 <td>${formatDateTime(exp.date)}</td>
                 <td>${exp.description || '-'}</td>
                 <td style="text-align:center;">
-                  ${exp.receiptPhoto ? `
-                    <a href="${exp.receiptPhoto}" target="_blank" download="nota_${exp.id}.png" style="display:inline-flex;align-items:center;gap:4px;color:#059669;font-weight:600;text-decoration:none;font-size:11px;background:#ecfdf5;padding:3px 8px;border-radius:4px;border:1px solid #a7f3d0;">
-                      Unduh Nota
+                  ${gdriveUrl ? `
+                    <a href="${gdriveUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;color:#059669;font-weight:600;text-decoration:none;font-size:11px;background:#ecfdf5;padding:3px 8px;border-radius:4px;border:1px solid #a7f3d0;" title="Buka berkas di Google Drive">
+                      <span>🔗</span>
+                      <span>Google Drive</span>
                     </a>
                   ` : '<span style="color:#94a3b8;font-size:11px;">-</span>'}
                 </td>
                 <td class="text-right bold val-red">${formatRupiah(exp.amount)}</td>
               </tr>
-            `)
+            `;
+              })
               .join('')
       }
     </tbody>

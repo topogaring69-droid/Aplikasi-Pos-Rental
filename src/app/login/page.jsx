@@ -16,7 +16,7 @@ import {
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('shelby123');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -267,7 +267,7 @@ export default function LoginPage() {
           fontSize: '11px',
           color: '#64748b'
         }}>
-          <div>Akun Default: <strong>admin</strong> | Password: <strong>shelby123</strong></div>
+          <div>Aplikasi POS Kasir & Rental Motor Shelby</div>
           <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: '#059669' }}>
             <ShieldCheck size={13} />
             <span>Dilindungi Brute-Force Rate Limiting & Enkripsi Sesi</span>

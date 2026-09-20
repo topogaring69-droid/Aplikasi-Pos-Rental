@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Header from './Header';
 import BottomNav from './BottomNav';
 import PinLockModal from './PinLockModal';
+import NotFoundView from './NotFoundView';
 import { getSettings } from '../lib/storage';
 
 export default function AppClientWrapper({ children }) {
@@ -55,11 +56,8 @@ export default function AppClientWrapper({ children }) {
       console.warn('Auth check error:', e);
     }
 
+    setCurrentUser(null);
     setAuthChecked(true);
-    // Jika belum login dan sedang mengakses halaman internal, arahkan ke /login
-    if (!isLoginPage) {
-      router.push('/login');
-    }
   };
 
   const handleLogout = async () => {
@@ -85,11 +83,47 @@ export default function AppClientWrapper({ children }) {
     setIsLocked(true);
   };
 
-  // Jika sedang di halaman login, tampilkan layar login tanpa Header & BottomNav
+  // 1. Tampilkan indikator loading saat pemeriksaan sesi awal
+  if (!authChecked) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-dark)',
+        }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div
+            className="spin-animate"
+            style={{
+              width: '32px',
+              height: '32px',
+              border: '3px solid rgba(5, 150, 105, 0.2)',
+              borderTopColor: 'var(--primary)',
+              borderRadius: '50%',
+              margin: '0 auto 12px',
+            }}
+          />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Memverifikasi sesi aman...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Jika sedang di halaman login, tampilkan layar login tanpa Header & BottomNav
   if (isLoginPage) {
     return <>{children}</>;
   }
 
+  // 3. Jika belum login dan mengakses halaman internal -> Tampilkan 404 murni (tanpa membocorkan keberadaan rute)
+  if (!currentUser) {
+    return <NotFoundView user={null} />;
+  }
+
+  // 4. Jika sudah login -> Tampilkan layout utama lengkap
   return (
     <div className="app-container">
       {/* Header Aplikasi dengan tombol Logout */}

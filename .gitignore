@@ -13,9 +13,22 @@
 # Production build
 /build
 
-# Environment variables
+# Environment variables & Secrets
 .env
+.env.*
 .env*.local
+*.env
+*.pem
+*.key
+*.p8
+*.p12
+*.json.key
+*service-account*.json
+*credentials*.json
+
+# Internal test & scratch scripts
+test-*.mjs
+check-*.mjs
 
 # SQLite Database
 *.db

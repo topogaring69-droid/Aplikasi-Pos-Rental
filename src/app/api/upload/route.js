@@ -3,6 +3,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { uploadToGoogleDrive } from '@/lib/googleDrive';
 import { verifySession } from '@/lib/auth';
+import { put } from '@vercel/blob';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
@@ -54,34 +57,65 @@ export async function POST(request) {
       fileName = `nota_${Date.now()}_${Math.random().toString(36).substring(2, 7)}${ext}`;
     }
 
-    // CABANG PENYIMPANAN: LOKAL PRIVAT vs GOOGLE DRIVE (.env)
-    if (storageDriver === 'google_drive') {
-      const driveResult = await uploadToGoogleDrive({
-        fileName,
-        buffer: fileBuffer,
-        mimeType
-      });
-      return NextResponse.json({
-        success: true,
-        driver: 'google_drive',
-        url: driveResult.gdriveLink || `/api/uploads/${fileName}`,
-        gdriveFileId: driveResult.gdriveFileId,
-        gdriveLink: driveResult.gdriveLink
-      });
-    } else {
-      // Mode Lokal: Simpan di folder PRIVAT storage/uploads (Bukan di public!)
-      const uploadDir = path.join(process.cwd(), 'storage', 'uploads');
-      await fs.mkdir(uploadDir, { recursive: true });
-      const filePath = path.join(uploadDir, fileName);
-      await fs.writeFile(filePath, fileBuffer);
-
-      return NextResponse.json({
-        success: true,
-        driver: 'local',
-        url: `/api/uploads/${fileName}`,
-        fileName
-      });
+    // 1. PRIORITAS UTAMA VERCEL: VERCEL BLOB
+    // Jika token Vercel Blob tersedia (otomatis disuntikkan oleh Vercel saat menambahkan Blob storage)
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const blob = await put(fileName, fileBuffer, {
+          access: 'public',
+          contentType: mimeType,
+        });
+        return NextResponse.json({
+          success: true,
+          driver: 'vercel_blob',
+          url: blob.url,
+          fileName,
+        });
+      } catch (blobErr) {
+        console.error('Vercel Blob Upload Error:', blobErr);
+      }
     }
+
+    // 2. GOOGLE DRIVE (.env)
+    if (storageDriver === 'google_drive') {
+      try {
+        const driveResult = await uploadToGoogleDrive({
+          fileName,
+          buffer: fileBuffer,
+          mimeType,
+        });
+        return NextResponse.json({
+          success: true,
+          driver: 'google_drive',
+          url: driveResult.gdriveLink || `/api/uploads/${fileName}`,
+          gdriveFileId: driveResult.gdriveFileId,
+          gdriveLink: driveResult.gdriveLink,
+        });
+      } catch (driveErr) {
+        console.error('Google Drive Error Log:', driveErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Google Drive Gagal: ${driveErr.message}`,
+            details: driveErr.response?.data?.error || driveErr.message,
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // 3. MODE LOKAL (Penyimpanan privat storage/uploads)
+    const uploadDir = path.join(process.cwd(), 'storage', 'uploads');
+    await fs.mkdir(uploadDir, { recursive: true });
+    const filePath = path.join(uploadDir, fileName);
+    await fs.writeFile(filePath, fileBuffer);
+
+    return NextResponse.json({
+      success: true,
+      driver: 'local',
+      url: `/api/uploads/${fileName}`,
+      fileName,
+    });
   } catch (error) {
     console.error('API Upload Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

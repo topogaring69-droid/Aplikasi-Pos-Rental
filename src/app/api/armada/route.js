@@ -13,8 +13,10 @@ export async function GET() {
     // Seed jika kosong
     if (fleet.length === 0) {
       for (const m of initialFleet) {
-        await prisma.fleet.create({
-          data: {
+        await prisma.fleet.upsert({
+          where: { nopol: m.nopol.toUpperCase().trim() },
+          update: {},
+          create: {
             id: m.id,
             nopol: m.nopol.toUpperCase().trim(),
             brand: m.brand,

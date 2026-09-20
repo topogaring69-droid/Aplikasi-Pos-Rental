@@ -1,4 +1,4 @@
-import { initialCustomers, initialFleet, initialTransactions, initialExpenses, initialSettings } from './seedData';
+import { initialCustomers, initialFleet, initialTransactions, initialExpenses, initialSettings } from './seedData.js';
 
 const KEYS = {
   CUSTOMERS: 'pos_customers',
@@ -285,27 +285,55 @@ export function getExpenses() {
   }
 }
 
-export async function saveExpense(exp) {
+export async function saveExpense(exp, file = null) {
   if (!isBrowser) return;
-  const list = getExpenses();
-  const index = list.findIndex((e) => e.id === exp.id);
-  if (index >= 0) {
-    list[index] = exp;
+
+  let savedItem = { ...exp };
+
+  // Kirim data ke backend (termasuk berkas foto jika ada yang diunggah saat submit)
+  let res;
+  if (file && typeof file === 'object') {
+    const formData = new FormData();
+    for (const [k, v] of Object.entries(exp)) {
+      if (v !== null && v !== undefined) {
+        formData.append(k, typeof v === 'boolean' ? String(v) : v);
+      }
+    }
+    formData.append('file', file);
+
+    res = await fetch('/api/pengeluaran', {
+      method: 'POST',
+      body: formData,
+    });
   } else {
-    list.unshift(exp);
+    res = await fetch('/api/pengeluaran', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(exp),
+    });
+  }
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyimpan pengeluaran (${res.status})`);
+  }
+
+  if (json.data) {
+    savedItem = json.data;
+  }
+
+  // Perbarui cache lokal browser setelah backend sukses
+  const list = getExpenses();
+  const index = list.findIndex((e) => e.id === savedItem.id);
+  if (index >= 0) {
+    list[index] = savedItem;
+  } else {
+    list.unshift(savedItem);
   }
   localStorage.setItem(KEYS.EXPENSES, JSON.stringify(list));
 
-  try {
-    await fetch('/api/pengeluaran', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(exp)
-    });
-  } catch (e) {
-    console.warn('Sync pengeluaran ke SQLite tertunda:', e);
-  }
-  return list;
+  return savedItem;
 }
 
 export async function deleteExpense(id) {
@@ -440,4 +468,38 @@ export function importAllData(jsonData) {
   if (jsonData.expenses) localStorage.setItem(KEYS.EXPENSES, JSON.stringify(jsonData.expenses));
   if (jsonData.settings) localStorage.setItem(KEYS.SETTINGS, JSON.stringify(jsonData.settings));
   return true;
+}
+
+/**
+ * Menghasilkan link Google Drive CDN (lh3.googleusercontent.com/d/ID)
+ * untuk lampiran nota agar tidak memicu error rate limit download.
+ */
+export function getGdriveReceiptUrl(expOrUrl) {
+  if (!expOrUrl) return '';
+  let url = typeof expOrUrl === 'string' ? expOrUrl : (expOrUrl.gdriveLink || expOrUrl.receiptPhoto || '');
+  const fileId = typeof expOrUrl === 'object' ? expOrUrl.gdriveFileId : null;
+
+  if (fileId) {
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  }
+
+  if (!url) return '';
+
+  if (url.includes('googleusercontent.com/d/')) {
+    return url;
+  }
+
+  // Cek format drive.google.com/file/d/<FILE_ID>
+  const matchFile = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchFile && matchFile[1]) {
+    return `https://lh3.googleusercontent.com/d/${matchFile[1]}`;
+  }
+
+  // Cek format id=<FILE_ID>
+  const matchId = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchId && matchId[1]) {
+    return `https://lh3.googleusercontent.com/d/${matchId[1]}`;
+  }
+
+  return url;
 }

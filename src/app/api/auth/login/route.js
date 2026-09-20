@@ -11,7 +11,7 @@ import {
 
 export async function POST(request) {
   try {
-    // 1. Pastikan akun bawaan (admin / shelby123) sudah tersedia di database
+    // 1. Pastikan akun bawaan admin sudah terverifikasi dan aman di database
     await ensureInitialAdmin();
 
     const body = await request.json();

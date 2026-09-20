@@ -15,7 +15,9 @@ import {
   AlertCircle,
   Cloud,
   RotateCcw,
-  Download
+  Download,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { 
   fetchExpenses, 
@@ -23,7 +25,8 @@ import {
   deleteExpense, 
   fetchFleet, 
   formatRupiah, 
-  formatDateTime 
+  formatDateTime,
+  getGdriveReceiptUrl
 } from '../../lib/storage';
 import Toast from '../../components/Toast';
 
@@ -45,6 +48,11 @@ export default function PengeluaranPage() {
   const [receiptPhoto, setReceiptPhoto] = useState(null);
   const [gdriveFileId, setGdriveFileId] = useState(null);
   const [gdriveLink, setGdriveLink] = useState(null);
+
+  // Berkas foto baru yang dipilih untuk diunggah saat submit
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal Zoom Bukti Nota
   const [zoomPhoto, setZoomPhoto] = useState(null);
@@ -73,8 +81,8 @@ export default function PengeluaranPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Unggah foto nota ke server (Lokal public/uploads atau Google Drive via .env)
-  const handlePhotoUpload = async (e) => {
+  // Pilih foto nota (Hanya pratinjau lokal, upload dilakukan saat tombol Simpan ditekan)
+  const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -83,39 +91,10 @@ export default function PengeluaranPage() {
       return;
     }
 
-    try {
-      showToast('Mengunggah berkas foto nota...', 'info');
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (data.success && data.url) {
-        setReceiptPhoto(data.url);
-        if (data.gdriveFileId) setGdriveFileId(data.gdriveFileId);
-        if (data.gdriveLink) setGdriveLink(data.gdriveLink);
-        showToast(
-          data.driver === 'google_drive'
-            ? 'Foto nota berhasil diunggah ke Google Drive!'
-            : 'Foto nota berhasil disimpan di penyimpanan lokal!'
-        );
-      } else {
-        throw new Error(data.error || 'Gagal mengunggah foto');
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      // Fallback base64 client jika offline
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setReceiptPhoto(event.target.result);
-        showToast('Foto nota dilampirkan (mode offline)!');
-      };
-      reader.readAsDataURL(file);
-    }
+    setSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    showToast('Foto nota dipilih. Akan diunggah saat formulir disimpan.', 'info');
   };
 
   const handleOpenNew = () => {
@@ -126,6 +105,8 @@ export default function PengeluaranPage() {
     setAmount('');
     setDescription('');
     setReceiptPhoto(null);
+    setSelectedFile(null);
+    setPreviewUrl(null);
     setGdriveFileId(null);
     setGdriveLink(null);
     resetDateNow();
@@ -141,6 +122,8 @@ export default function PengeluaranPage() {
     setDescription(exp.description || '');
     setDate(exp.date ? exp.date.slice(0, 16) : new Date().toISOString().slice(0, 16));
     setReceiptPhoto(exp.receiptPhoto || null);
+    setSelectedFile(null);
+    setPreviewUrl(null);
     setGdriveFileId(exp.gdriveFileId || null);
     setGdriveLink(exp.gdriveLink || null);
     setShowForm(true);
@@ -188,26 +171,43 @@ export default function PengeluaranPage() {
       return;
     }
 
-    const id = editingId || `EXP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    setIsSubmitting(true);
 
-    const expData = {
-      id,
-      isVehicleRelated,
-      nopol: isVehicleRelated ? nopol.toUpperCase().trim() : '',
-      category,
-      amount: Number(amount),
-      description: description.trim(),
-      date,
-      receiptPhoto,
-      gdriveFileId,
-      gdriveLink,
-      createdAt: new Date().toISOString()
-    };
+    try {
+      const id = editingId || `EXP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    await saveExpense(expData);
-    await loadData();
-    setShowForm(false);
-    showToast(editingId ? 'Pengeluaran diperbarui di SQLite!' : 'Pengeluaran baru disimpan ke SQLite!');
+      const expData = {
+        id,
+        isVehicleRelated,
+        nopol: isVehicleRelated ? nopol.toUpperCase().trim() : '',
+        category,
+        amount: Number(amount),
+        description: description.trim(),
+        date,
+        receiptPhoto: selectedFile ? null : receiptPhoto,
+        gdriveFileId,
+        gdriveLink,
+        createdAt: new Date().toISOString()
+      };
+
+      // Upload berkas dan pencatatan database dilakukan di backend saat submit
+      await saveExpense(expData, selectedFile);
+      await loadData();
+      setShowForm(false);
+      showToast(
+        editingId
+          ? 'Pengeluaran & foto nota berhasil diperbarui!'
+          : 'Pengeluaran baru & foto nota berhasil disimpan!',
+        'success'
+      );
+      setSelectedFile(null);
+      setPreviewUrl(null);
+    } catch (err) {
+      console.error('Submit error:', err);
+      showToast(err.message || 'Gagal menyimpan pengeluaran', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredExpenses = expenses.filter((e) => {
@@ -395,24 +395,28 @@ export default function PengeluaranPage() {
               </div>
 
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', gap: '6px' }}>
+                <label className="btn btn-secondary btn-sm" style={{ cursor: isSubmitting ? 'not-allowed' : 'pointer', gap: '6px', opacity: isSubmitting ? 0.6 : 1 }}>
                   <Camera size={16} />
-                  <span>Ambil Foto / Upload Nota</span>
+                  <span>{selectedFile || receiptPhoto ? 'Ganti Foto Nota' : 'Pilih Foto / Ambil Gambar'}</span>
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
                     style={{ display: 'none' }}
-                    onChange={handlePhotoUpload}
+                    disabled={isSubmitting}
+                    onChange={handlePhotoSelect}
                   />
                 </label>
 
-                {receiptPhoto && (
+                {(previewUrl || receiptPhoto) && (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
+                    disabled={isSubmitting}
                     style={{ color: 'var(--accent-rose)', borderColor: 'rgba(244, 63, 94, 0.4)' }}
                     onClick={() => {
+                      setSelectedFile(null);
+                      setPreviewUrl(null);
                       setReceiptPhoto(null);
                       setGdriveFileId(null);
                       setGdriveLink(null);
@@ -423,16 +427,16 @@ export default function PengeluaranPage() {
                 )}
               </div>
 
-              {receiptPhoto && (
+              {(previewUrl || receiptPhoto) && (
                 <div style={{ marginTop: '10px', position: 'relative', display: 'inline-block' }}>
                   <img
-                    src={receiptPhoto}
+                    src={previewUrl || receiptPhoto}
                     alt="Pratinjau Bukti Nota"
                     style={{ maxWidth: '140px', maxHeight: '140px', borderRadius: '10px', border: '1px solid var(--border)', objectFit: 'cover', cursor: 'pointer' }}
-                    onClick={() => setZoomPhoto(receiptPhoto)}
+                    onClick={() => setZoomPhoto(previewUrl || receiptPhoto)}
                   />
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Klik foto untuk memperbesar
+                  <div style={{ fontSize: '11px', color: selectedFile ? '#0284c7' : 'var(--text-muted)', marginTop: '2px', fontWeight: selectedFile ? '700' : 'normal' }}>
+                    {selectedFile ? '★ Foto baru (diunggah saat Anda klik Simpan)' : 'Foto nota tersimpan'} (Klik untuk perbesar)
                   </div>
                 </div>
               )}
@@ -443,8 +447,11 @@ export default function PengeluaranPage() {
                 <button
                   type="button"
                   className="btn btn-outline"
+                  disabled={isSubmitting}
                   onClick={() => {
                     setEditingId(null);
+                    setSelectedFile(null);
+                    setPreviewUrl(null);
                     setShowForm(false);
                   }}
                   style={{ flex: 1 }}
@@ -453,9 +460,23 @@ export default function PengeluaranPage() {
                   <span>Batal Edit</span>
                 </button>
               )}
-              <button type="submit" className="btn btn-primary btn-block" style={{ flex: 2 }}>
-                <CheckCircle2 size={18} />
-                <span>{editingId ? 'Simpan Perubahan ke SQLite' : 'Simpan Pengeluaran ke SQLite'}</span>
+              <button
+                type="submit"
+                className="btn btn-primary btn-block"
+                disabled={isSubmitting}
+                style={{ flex: 2, opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="spin-animate" />
+                    <span>Menyimpan & Mengunggah Nota...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>{editingId ? 'Simpan Perubahan' : 'Simpan Pengeluaran'}</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -533,20 +554,21 @@ export default function PengeluaranPage() {
                       type="button"
                       className="btn-icon"
                       style={{ width: '32px', height: '32px', color: 'var(--accent-blue)', borderColor: 'rgba(59, 130, 246, 0.4)' }}
-                      onClick={() => setZoomPhoto({ url: exp.receiptPhoto, exp })}
+                      onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
                       title="Lihat Foto Bukti Nota"
                     >
                       <ImageIcon size={15} />
                     </button>
-                    <button
-                      type="button"
+                    <a
+                      href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="btn-icon"
-                      style={{ width: '32px', height: '32px', color: 'var(--primary)', borderColor: 'var(--primary-border)' }}
-                      onClick={() => handleDownloadReceipt(exp.receiptPhoto, exp.id)}
-                      title="Unduh Berkas Foto Nota"
+                      style={{ width: '32px', height: '32px', color: 'var(--primary)', borderColor: 'var(--primary-border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+                      title="Buka Berkas di Google Drive"
                     >
-                      <Download size={15} />
-                    </button>
+                      <ExternalLink size={15} />
+                    </a>
                   </>
                 )}
 
@@ -600,15 +622,16 @@ export default function PengeluaranPage() {
               />
             </div>
             <div className="modal-footer" style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
+              <a 
+                href={typeof zoomPhoto === 'string' ? getGdriveReceiptUrl(zoomPhoto) : (getGdriveReceiptUrl(zoomPhoto.exp) || zoomPhoto.url)}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn btn-primary" 
-                style={{ flex: 2, gap: '6px' }}
-                onClick={() => handleDownloadReceipt(typeof zoomPhoto === 'string' ? zoomPhoto : zoomPhoto.url, zoomPhoto.exp?.id || 'pengeluaran')}
+                style={{ flex: 2, gap: '6px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <Download size={16} />
-                <span>Unduh Foto Nota</span>
-              </button>
+                <ExternalLink size={16} />
+                <span>Buka di Google Drive</span>
+              </a>
               <button 
                 type="button" 
                 className="btn btn-secondary" 

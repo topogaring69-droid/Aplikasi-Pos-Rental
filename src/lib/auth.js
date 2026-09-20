@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { prisma } from './prisma';
+import { prisma } from './prisma.js';
 
 // ==================== 1. HASHING PASSWORD (SCRYPT + SALT) ====================
 
@@ -21,26 +21,76 @@ export function verifyPassword(password, storedHash) {
   }
 }
 
-// ==================== 2. SEED INITIAL ADMIN USER ====================
+// ==================== 2. SEED & SYNC INITIAL ADMIN USER ====================
 
 export async function ensureInitialAdmin() {
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const configuredPassword = process.env.ADMIN_PASSWORD || 'ShelbyRent@2026!Admin';
+
   try {
-    const count = await prisma.user.count();
-    if (count === 0) {
+    const adminUser = await prisma.user.findFirst({
+      where: { role: 'admin' },
+    });
+
+    if (!adminUser) {
       const defaultUser = await prisma.user.create({
         data: {
-          username: 'admin',
+          username: adminUsername,
           name: 'Admin Shelby Rent',
-          password: hashPassword('shelby123'),
+          password: hashPassword(configuredPassword),
           role: 'admin',
         },
       });
-      console.log('Akun default admin berhasil dibuat: admin / shelby123');
+      console.log(`Akun admin berhasil diinisialisasi dengan username: ${adminUsername}`);
       return defaultUser;
+    } else {
+      // Jika akun admin masih memakai password default lama 'shelby123', migrasi otomatis ke password aman terenkripsi
+      const isOldWeakPassword = verifyPassword('shelby123', adminUser.password);
+      if (isOldWeakPassword) {
+        await prisma.user.update({
+          where: { id: adminUser.id },
+          data: {
+            password: hashPassword(configuredPassword),
+            username: adminUsername,
+          },
+        });
+        console.log('Keamanan: Password admin yang lemah telah diperbarui secara otomatis.');
+      }
     }
   } catch (e) {
     console.warn('ensureInitialAdmin check:', e.message);
   }
+}
+
+/**
+ * Mengubah password akun admin secara aman
+ */
+export async function changeAdminPassword(userId, currentPassword, newPassword) {
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('Password baru minimal harus 8 karakter!');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new Error('Pengguna tidak ditemukan!');
+  }
+
+  const isValidCurrent = verifyPassword(currentPassword, user.password);
+  if (!isValidCurrent) {
+    throw new Error('Password lama yang Anda masukkan salah!');
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      password: hashPassword(newPassword),
+    },
+  });
+
+  return { success: true, message: 'Password admin berhasil diubah!' };
 }
 
 // ==================== 3. MULTI-DEVICE SESSION MANAGEMENT ====================

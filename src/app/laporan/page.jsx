@@ -14,7 +14,8 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   ImageIcon,
-  X
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { 
   fetchTransactions, 
@@ -22,7 +23,8 @@ import {
   fetchSettings, 
   formatRupiah, 
   formatDateTime,
-  formatDateOnly
+  formatDateOnly,
+  getGdriveReceiptUrl
 } from '../../lib/storage';
 import { exportReportToPrintable } from '../../lib/pdfExport';
 import ModalDetail from '../../components/ModalDetail';
@@ -405,22 +407,23 @@ export default function LaporanPage() {
                         type="button"
                         className="btn btn-outline btn-sm"
                         style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px' }}
-                        onClick={() => setZoomPhoto({ url: exp.receiptPhoto, exp })}
+                        onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
                         title="Lihat Foto Nota"
                       >
                         <ImageIcon size={12} />
                         <span>Lihat</span>
                       </button>
-                      <button
-                        type="button"
+                      <a
+                        href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="btn btn-secondary btn-sm"
-                        style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)' }}
-                        onClick={() => handleDownloadReceipt(exp.receiptPhoto, exp.id)}
-                        title="Unduh Berkas Lampiran Nota"
+                        style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                        title="Buka Berkas Nota di Google Drive"
                       >
-                        <Download size={12} />
-                        <span>Unduh</span>
-                      </button>
+                        <ExternalLink size={12} />
+                        <span>Google Drive</span>
+                      </a>
                     </div>
                   )}
                 </div>
@@ -476,15 +479,16 @@ export default function LaporanPage() {
               />
             </div>
             <div className="modal-footer" style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
+              <a 
+                href={typeof zoomPhoto === 'string' ? getGdriveReceiptUrl(zoomPhoto) : (getGdriveReceiptUrl(zoomPhoto.exp) || zoomPhoto.url)}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn btn-primary" 
-                style={{ flex: 2, gap: '6px' }}
-                onClick={() => handleDownloadReceipt(typeof zoomPhoto === 'string' ? zoomPhoto : zoomPhoto.url, zoomPhoto.exp?.id || 'pengeluaran')}
+                style={{ flex: 2, gap: '6px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <Download size={16} />
-                <span>Unduh Foto Nota</span>
-              </button>
+                <ExternalLink size={16} />
+                <span>Buka di Google Drive</span>
+              </a>
               <button 
                 type="button" 
                 className="btn btn-secondary" 

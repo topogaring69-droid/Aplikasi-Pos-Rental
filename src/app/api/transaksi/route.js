@@ -12,8 +12,10 @@ export async function GET() {
 
     if (list.length === 0) {
       for (const t of initialTransactions) {
-        await prisma.transaction.create({
-          data: {
+        await prisma.transaction.upsert({
+          where: { id: t.id },
+          update: {},
+          create: {
             id: t.id,
             nopol: t.nopol,
             customerId: t.customerId || null,
