@@ -13,12 +13,14 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { formatRupiah, formatDateTime } from '../lib/storage';
+import { formatRupiah, formatDateTime, getPaymentStatus } from '../lib/storage';
 import { formatRentalDuration } from '../lib/rentalPricing';
 import { showError } from '../lib/sweetalert';
 
 export default function StrukModal({ tx, settings, onClose }) {
   if (!tx || !settings) return null;
+
+  const paySt = getPaymentStatus(tx);
 
   // Tab aktif: 'struk' (kecil/thermal) vs 'invoice' (lebar A4)
   const [docType, setDocType] = useState('struk');
@@ -262,13 +264,25 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                 </div>
 
                 <div className="receipt-row" style={{ marginTop: '4px', fontSize: '11px' }}>
-                  <span>Bayar ({tx.paymentMethod || 'Tunai'}):</span>
-                  <span>{formatRupiah(tx.amountPaid || tx.total)}</span>
+                  <span>Status Bayar:</span>
+                  <span style={{ fontWeight: 'bold' }}>{paySt.label.toUpperCase()}</span>
                 </div>
                 <div className="receipt-row" style={{ fontSize: '11px' }}>
-                  <span>Kembali:</span>
-                  <span>{formatRupiah(tx.changeAmount || 0)}</span>
+                  <span>Dibayar ({tx.paymentMethod || 'Tunai'}):</span>
+                  <span>{formatRupiah(paySt.paid)}</span>
                 </div>
+                {paySt.remaining > 0 && (
+                  <div className="receipt-row" style={{ fontSize: '11px', fontWeight: 'bold', color: '#b91c1c' }}>
+                    <span>SISA TAGIHAN:</span>
+                    <span>{formatRupiah(paySt.remaining)}</span>
+                  </div>
+                )}
+                {Number(tx.changeAmount) > 0 && (
+                  <div className="receipt-row" style={{ fontSize: '11px' }}>
+                    <span>Kembali:</span>
+                    <span>{formatRupiah(tx.changeAmount || 0)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Footer Ketentuan Struk */}
@@ -301,7 +315,15 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                   <h3>INVOICE SEWA</h3>
                   <span>{tx.id.replace('TRX', 'INV')}</span>
                   <div style={{ marginTop: '6px' }}>
-                    <span className="invoice-paid-badge">LUNAS</span>
+                    <span 
+                      className="invoice-paid-badge"
+                      style={{
+                        backgroundColor: paySt.key === 'lunas' ? '#059669' : (paySt.key === 'sebagian' ? '#d97706' : '#e11d48'),
+                        color: '#ffffff'
+                      }}
+                    >
+                      {paySt.label.toUpperCase()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -375,13 +397,23 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                   <span style={{ color: '#059669' }}>{formatRupiah(tx.total)}</span>
                 </div>
                 <div className="invoice-totals-row" style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                  <span>Status Pembayaran:</span>
+                  <span style={{ color: paySt.color, fontWeight: '700' }}>{paySt.label.toUpperCase()}</span>
+                </div>
+                <div className="invoice-totals-row" style={{ fontSize: '11px', color: '#64748b' }}>
                   <span>Metode Pembayaran:</span>
                   <span>{tx.paymentMethod || 'Tunai'}</span>
                 </div>
                 <div className="invoice-totals-row" style={{ fontSize: '11px', color: '#64748b' }}>
-                  <span>Status:</span>
-                  <span style={{ color: '#059669', fontWeight: '700' }}>LUNAS</span>
+                  <span>Jumlah Dibayar:</span>
+                  <span style={{ fontWeight: '700' }}>{formatRupiah(paySt.paid)}</span>
                 </div>
+                {paySt.remaining > 0 && (
+                  <div className="invoice-totals-row" style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '800', marginTop: '2px' }}>
+                    <span>Sisa Tagihan (Hutang):</span>
+                    <span>{formatRupiah(paySt.remaining)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Syarat & Ketentuan */}

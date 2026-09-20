@@ -1,17 +1,16 @@
 'use client';
 
 import React from 'react';
-import { X, Printer, Trash2, Calendar, Phone, User, ShieldCheck } from 'lucide-react';
-import { formatRupiah, formatDateTime } from '../lib/storage';
+import { X, Printer, Trash2, Calendar, Phone, User, DollarSign } from 'lucide-react';
+import { formatRupiah, formatDateTime, getPaymentStatus } from '../lib/storage';
 import { formatRentalDuration } from '../lib/rentalPricing';
 
-export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) {
+export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete, onSettle }) {
   if (!tx) return null;
 
   const extraCosts = tx.extraCosts || [];
-  const extraTotal = extraCosts.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-
   const durationText = formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours);
+  const paySt = getPaymentStatus(tx);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -32,8 +31,8 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) 
             <span className="badge badge-plate" style={{ fontSize: '15px', padding: '6px 12px' }}>
               {tx.nopol || 'Tanpa Nopol'}
             </span>
-            <span className="badge badge-success">
-              {tx.paymentMethod || 'Lunas'}
+            <span className={`badge ${paySt.badgeClass}`} style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 700 }}>
+              {paySt.label}
             </span>
           </div>
 
@@ -89,18 +88,32 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) 
 
             {/* Rincian Pembayaran */}
             <div style={{ background: 'var(--bg-input)', padding: '10px 14px', borderRadius: '10px', marginTop: '10px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Status Pembayaran:</span>
+                <span className={`badge ${paySt.badgeClass}`} style={{ fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
+                  {paySt.label}
+                </span>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Metode Bayar:</span>
                 <strong>{tx.paymentMethod || 'Tunai'}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Jumlah Diterima:</span>
-                <span style={{ fontFamily: 'var(--font-mono)' }}>{formatRupiah(tx.amountPaid || tx.total)}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatRupiah(paySt.paid)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Kembalian:</span>
-                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-amber)' }}>{formatRupiah(tx.changeAmount || 0)}</span>
-              </div>
+              {paySt.remaining > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: 'var(--accent-rose)', fontWeight: 800 }}>
+                  <span>Sisa Tagihan (Hutang):</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{formatRupiah(paySt.remaining)}</span>
+                </div>
+              )}
+              {Number(tx.changeAmount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Kembalian:</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-amber)' }}>{formatRupiah(tx.changeAmount)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -113,7 +126,19 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) 
           )}
         </div>
 
-        <div className="modal-footer" style={{ display: 'flex', gap: '8px' }}>
+        <div className="modal-footer" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {paySt.remaining > 0 && onSettle && (
+            <button 
+              type="button" 
+              className="btn" 
+              style={{ flex: 1, backgroundColor: '#f59e0b', color: '#ffffff', fontWeight: 700, border: 'none', borderRadius: '8px' }}
+              onClick={() => onSettle(tx)}
+              title="Catat Pelunasan Tagihan"
+            >
+              <DollarSign size={16} />
+              <span>Pelunasan</span>
+            </button>
+          )}
           {onEdit && (
             <button 
               type="button" 
@@ -122,7 +147,7 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete }) 
               onClick={() => onEdit(tx)}
               title="Edit Data Transaksi"
             >
-              <span>Edit Transaksi</span>
+              <span>Edit</span>
             </button>
           )}
           <button 

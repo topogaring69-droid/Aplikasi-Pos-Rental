@@ -91,6 +91,7 @@ model Transaction {
   paymentMethod String    @default("Tunai") @map("payment_method")
   amountPaid    Int       @map("amount_paid")
   changeAmount  Int       @default(0) @map("change_amount")
+  paymentStatus String    @default("lunas") @map("payment_status")
   status        String    @default("active")
   notes         String?   @default("")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -98,6 +99,7 @@ model Transaction {
 
   @@index([deletedAt])
   @@index([status])
+  @@index([paymentStatus])
   @@map("transactions")
 }
 

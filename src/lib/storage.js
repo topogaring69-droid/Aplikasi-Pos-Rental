@@ -491,6 +491,89 @@ export function getTransactionStatus(tx) {
   };
 }
 
+export function getPaymentStatus(tx) {
+  if (!tx) {
+    return {
+      key: 'lunas',
+      label: 'Lunas',
+      badgeClass: 'badge-success',
+      color: '#16a34a',
+      paid: 0,
+      remaining: 0,
+      subtext: 'Lunas'
+    };
+  }
+
+  const total = Number(tx.total) || 0;
+  const paid = Number(tx.amountPaid != null ? tx.amountPaid : total);
+
+  if (paid <= 0) {
+    return {
+      key: 'terhutang',
+      label: 'Terhutang',
+      badgeClass: 'badge-danger',
+      color: '#e11d48',
+      paid: 0,
+      remaining: total,
+      subtext: `Belum Dibayar (${formatRupiah(total)})`
+    };
+  }
+
+  if (paid < total) {
+    const remaining = total - paid;
+    return {
+      key: 'sebagian',
+      label: 'Sebagian',
+      badgeClass: 'badge-warning',
+      color: '#d97706',
+      paid,
+      remaining,
+      subtext: `Kurang ${formatRupiah(remaining)}`
+    };
+  }
+
+  return {
+    key: 'lunas',
+    label: 'Lunas',
+    badgeClass: 'badge-success',
+    color: '#16a34a',
+    paid,
+    remaining: 0,
+    subtext: 'Lunas'
+  };
+}
+
+export async function recordTransactionPayment(id, { additionalAmount, paymentMethod, notes }) {
+  if (!isBrowser) return;
+  const res = await fetch('/api/transaksi', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id,
+      action: 'pay',
+      additionalAmount,
+      paymentMethod,
+      notes
+    })
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal mencatat pembayaran (${res.status})`);
+  }
+
+  const updated = json.data;
+  const list = getTransactions();
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx >= 0) {
+    list[idx] = updated;
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
+    memCache[KEYS.TRANSACTIONS] = { data: list, timestamp: Date.now() };
+  }
+
+  return updated;
+}
+
 export async function activateTransaction(id) {
   if (!isBrowser) return;
   const res = await fetch('/api/transaksi', {

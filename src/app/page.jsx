@@ -34,6 +34,7 @@ import {
   fetchSettings, 
   getSettings,
   getTransactionStatus,
+  getPaymentStatus,
   formatRupiah, 
   formatDateTime 
 } from '../lib/storage';
@@ -88,6 +89,7 @@ export default function TransaksiPage() {
     { id: '1', label: 'Helm Tambahan', amount: 0 }
   ]);
   const [paymentMethod, setPaymentMethod] = useState('Tunai');
+  const [paymentStatusOption, setPaymentStatusOption] = useState('lunas'); // 'lunas', 'sebagian', 'terhutang'
   const [amountPaid, setAmountPaid] = useState('');
   const [notes, setNotes] = useState('');
   const [txStatus, setTxStatus] = useState('active'); // 'active' atau 'booking'
@@ -342,7 +344,11 @@ export default function TransaksiPage() {
     0
   );
   const totalAmount = Number(rentalPrice || 0) + totalExtras;
-  const changeAmount = Math.max(0, (Number(amountPaid) || totalAmount) - totalAmount);
+  const currentNumPaid = amountPaid !== '' 
+    ? Number(amountPaid) 
+    : (paymentStatusOption === 'terhutang' ? 0 : totalAmount);
+  const changeAmount = Math.max(0, currentNumPaid - totalAmount);
+  const remainingDebt = Math.max(0, totalAmount - currentNumPaid);
 
   // ================= FITUR EDIT TRANSAKSI =================
   const handleStartEdit = (tx) => {
@@ -377,7 +383,9 @@ export default function TransaksiPage() {
     setExtraCosts(extras);
 
     setPaymentMethod(tx.paymentMethod || 'Tunai');
-    setAmountPaid(tx.amountPaid ? String(tx.amountPaid) : String(tx.total || ''));
+    setAmountPaid(tx.amountPaid != null ? String(tx.amountPaid) : String(tx.total || ''));
+    const initialPaySt = getPaymentStatus(tx);
+    setPaymentStatusOption(initialPaySt.key);
     setNotes(tx.notes || '');
     setTxStatus(tx.status || 'active');
 
@@ -403,6 +411,7 @@ export default function TransaksiPage() {
     setRentalPrice(100000);
     setExtraCosts([{ id: '1', label: 'Helm Tambahan', amount: 0 }]);
     setPaymentMethod('Tunai');
+    setPaymentStatusOption('lunas');
     setAmountPaid('');
     setNotes('');
     setTxStatus('active');
@@ -466,8 +475,9 @@ export default function TransaksiPage() {
         extraCosts: extraCosts.filter((c) => c.label.trim() && Number(c.amount) > 0),
         total: totalAmount,
         paymentMethod,
-        amountPaid: amountPaid ? Number(amountPaid) : totalAmount,
+        amountPaid: currentNumPaid,
         changeAmount,
+        paymentStatus: paymentStatusOption,
         status: txStatus,
         notes: notes.trim(),
         ...(isEdit ? {} : { createdAt: new Date().toISOString() })
@@ -987,9 +997,82 @@ export default function TransaksiPage() {
 
             {/* 6. Total & Pembayaran */}
             <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '800', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '800', marginBottom: '12px' }}>
                 <span>Total Biaya:</span>
                 <span style={{ color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>{formatRupiah(totalAmount)}</span>
+              </div>
+
+              {/* Status Pembayaran Pills */}
+              <div style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Status Pembayaran
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatusOption('lunas');
+                      setAmountPaid(String(totalAmount));
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: paymentStatusOption === 'lunas' ? '2px solid #16a34a' : '1px solid var(--border)',
+                      backgroundColor: paymentStatusOption === 'lunas' ? 'rgba(22, 163, 74, 0.12)' : '#ffffff',
+                      color: paymentStatusOption === 'lunas' ? '#16a34a' : 'var(--text-main)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    🟢 Lunas
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatusOption('sebagian');
+                      if (amountPaid === '' || Number(amountPaid) >= totalAmount || amountPaid === '0') {
+                        setAmountPaid('');
+                      }
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: paymentStatusOption === 'sebagian' ? '2px solid #d97706' : '1px solid var(--border)',
+                      backgroundColor: paymentStatusOption === 'sebagian' ? 'rgba(217, 119, 6, 0.12)' : '#ffffff',
+                      color: paymentStatusOption === 'sebagian' ? '#d97706' : 'var(--text-main)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    🟡 Sebagian (DP)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatusOption('terhutang');
+                      setAmountPaid('0');
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: paymentStatusOption === 'terhutang' ? '2px solid #e11d48' : '1px solid var(--border)',
+                      backgroundColor: paymentStatusOption === 'terhutang' ? 'rgba(225, 29, 72, 0.12)' : '#ffffff',
+                      color: paymentStatusOption === 'terhutang' ? '#e11d48' : 'var(--text-main)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    🔴 Terhutang
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -1011,17 +1094,39 @@ export default function TransaksiPage() {
                   <input
                     type="number"
                     className="form-control"
-                    placeholder={String(totalAmount)}
+                    placeholder={paymentStatusOption === 'terhutang' ? '0' : String(totalAmount)}
                     value={amountPaid}
-                    onChange={(e) => setAmountPaid(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAmountPaid(val);
+                      if (val === '' || val === '0') {
+                        setPaymentStatusOption('terhutang');
+                      } else {
+                        const num = Number(val);
+                        if (num < totalAmount) {
+                          setPaymentStatusOption('sebagian');
+                        } else {
+                          setPaymentStatusOption('lunas');
+                        }
+                      }
+                    }}
                     inputMode="numeric"
                   />
                 </div>
               </div>
 
+              {/* Tampilan Sisa Tagihan (Hutang) atau Kembalian */}
+              {remainingDebt > 0 && (
+                <div style={{ marginTop: '10px', fontSize: '13px', color: 'var(--accent-rose)', fontWeight: '800', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Sisa Tagihan (Hutang):</span>
+                  <span>{formatRupiah(remainingDebt)}</span>
+                </div>
+              )}
+
               {changeAmount > 0 && (
-                <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--accent-amber)', fontWeight: '700' }}>
-                  Kembalian: {formatRupiah(changeAmount)}
+                <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--accent-amber)', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Kembalian:</span>
+                  <span>{formatRupiah(changeAmount)}</span>
                 </div>
               )}
             </div>
@@ -1127,6 +1232,7 @@ export default function TransaksiPage() {
         filteredTransactions.map((tx) => {
           const hours = tx.durationHours || (Number(tx.durationDays) || 1) * 24;
           const st = getTransactionStatus(tx);
+          const paySt = getPaymentStatus(tx);
           return (
             <div
               key={tx.id}
@@ -1136,6 +1242,9 @@ export default function TransaksiPage() {
               <div className="item-top">
                 <span className="item-id">{tx.id}</span>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span className={`badge ${paySt.badgeClass}`} style={{ fontSize: '10px', fontWeight: '700' }}>
+                    {paySt.label}
+                  </span>
                   <span className={`badge ${st.badgeClass}`} style={{ fontSize: '10px', fontWeight: '700' }}>
                     {st.label}
                   </span>
@@ -1160,9 +1269,16 @@ export default function TransaksiPage() {
               </div>
 
               <div className="item-bottom">
-                <span className="badge badge-success" style={{ fontSize: '10px' }}>
-                  {tx.paymentMethod || 'Lunas'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Metode: <strong>{tx.paymentMethod || 'Tunai'}</strong>
+                  </span>
+                  {paySt.remaining > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--accent-rose)', fontWeight: 800 }}>
+                      (Kurang {formatRupiah(paySt.remaining)})
+                    </span>
+                  )}
+                </div>
 
                 {/* Tombol Aksi Cepat: Edit, Cetak, Hapus */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

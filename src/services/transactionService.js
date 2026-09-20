@@ -1,6 +1,17 @@
 import { prisma } from '../lib/prisma.js';
 import { ensureSystemInitialized } from './dbInitService.js';
 
+export function determinePaymentStatus(amountPaid, total, explicitStatus) {
+  if (explicitStatus && ['terhutang', 'sebagian', 'lunas'].includes(explicitStatus.toLowerCase())) {
+    return explicitStatus.toLowerCase();
+  }
+  const paid = Number(amountPaid) || 0;
+  const tot = Number(total) || 0;
+  if (paid <= 0) return 'terhutang';
+  if (paid < tot) return 'sebagian';
+  return 'lunas';
+}
+
 export const transactionService = {
   /**
    * Ambil seluruh transaksi aktif (tidak termasuk yang di-soft delete)
@@ -13,12 +24,19 @@ export const transactionService = {
       orderBy: { createdAt: 'desc' },
     });
 
-    return list.map((t) => ({
-      ...t,
-      durationHours: t.durationHours || (t.durationDays || 1) * 24,
-      extraCosts: t.extraCosts ? JSON.parse(t.extraCosts) : [],
-      createdAt: t.createdAt.toISOString(),
-    }));
+    return list.map((t) => {
+      const amountPaid = Number(t.amountPaid != null ? t.amountPaid : t.total);
+      const total = Number(t.total) || 0;
+      const paymentStatus = t.paymentStatus || determinePaymentStatus(amountPaid, total);
+      return {
+        ...t,
+        amountPaid,
+        paymentStatus,
+        durationHours: t.durationHours || (t.durationDays || 1) * 24,
+        extraCosts: t.extraCosts ? JSON.parse(t.extraCosts) : [],
+        createdAt: t.createdAt.toISOString(),
+      };
+    });
   },
 
   /**
@@ -31,8 +49,14 @@ export const transactionService = {
 
     if (!t) return null;
 
+    const amountPaid = Number(t.amountPaid != null ? t.amountPaid : t.total);
+    const total = Number(t.total) || 0;
+    const paymentStatus = t.paymentStatus || determinePaymentStatus(amountPaid, total);
+
     return {
       ...t,
+      amountPaid,
+      paymentStatus,
       durationHours: t.durationHours || (t.durationDays || 1) * 24,
       extraCosts: t.extraCosts ? JSON.parse(t.extraCosts) : [],
       createdAt: t.createdAt.toISOString(),
@@ -57,6 +81,8 @@ export const transactionService = {
     const total = Number(tx.total != null ? tx.total : (rentalPrice * durationDays));
 
     const status = tx.status || 'active';
+    const amountPaid = Number(tx.amountPaid != null ? tx.amountPaid : total);
+    const paymentStatus = determinePaymentStatus(amountPaid, total, tx.paymentStatus);
 
     // 1. Simpan Transaksi ke Prisma
     const saved = await prisma.transaction.upsert({
@@ -74,8 +100,9 @@ export const transactionService = {
         extraCosts: JSON.stringify(tx.extraCosts || []),
         total,
         paymentMethod: tx.paymentMethod || 'Tunai',
-        amountPaid: Number(tx.amountPaid != null ? tx.amountPaid : total),
+        amountPaid,
         changeAmount: Number(tx.changeAmount || 0),
+        paymentStatus,
         status,
         notes: tx.notes || '',
         deletedAt: null,
@@ -94,8 +121,9 @@ export const transactionService = {
         extraCosts: JSON.stringify(tx.extraCosts || []),
         total,
         paymentMethod: tx.paymentMethod || 'Tunai',
-        amountPaid: Number(tx.amountPaid != null ? tx.amountPaid : total),
+        amountPaid,
         changeAmount: Number(tx.changeAmount || 0),
+        paymentStatus,
         status,
         notes: tx.notes || '',
         createdAt: tx.createdAt ? new Date(tx.createdAt) : new Date(),
@@ -179,6 +207,10 @@ export const transactionService = {
     const durationHours = Number(tx.durationHours) || durationDays * 24;
     const nextStatus = tx.status || oldTx.status || 'active';
 
+    const newTotal = tx.total != null ? Number(tx.total) : oldTx.total;
+    const newAmountPaid = tx.amountPaid != null ? Number(tx.amountPaid) : oldTx.amountPaid;
+    const newPaymentStatus = determinePaymentStatus(newAmountPaid, newTotal, tx.paymentStatus);
+
     const updated = await prisma.transaction.update({
       where: { id },
       data: {
@@ -192,10 +224,11 @@ export const transactionService = {
         durationHours: durationHours,
         rentalPrice: tx.rentalPrice != null ? Number(tx.rentalPrice) : oldTx.rentalPrice,
         extraCosts: tx.extraCosts ? JSON.stringify(tx.extraCosts) : oldTx.extraCosts,
-        total: tx.total != null ? Number(tx.total) : oldTx.total,
+        total: newTotal,
         paymentMethod: tx.paymentMethod || oldTx.paymentMethod,
-        amountPaid: tx.amountPaid != null ? Number(tx.amountPaid) : oldTx.amountPaid,
+        amountPaid: newAmountPaid,
         changeAmount: tx.changeAmount != null ? Number(tx.changeAmount) : oldTx.changeAmount,
+        paymentStatus: newPaymentStatus,
         status: nextStatus,
         notes: tx.notes !== undefined ? tx.notes : oldTx.notes,
       },
@@ -301,6 +334,50 @@ export const transactionService = {
       ...updated,
       durationHours: tx.durationHours || (tx.durationDays || 1) * 24,
       extraCosts: tx.extraCosts ? JSON.parse(tx.extraCosts) : [],
+      createdAt: updated.createdAt.toISOString(),
+    };
+  },
+
+  /**
+   * Catat pembayaran / pelunasan sisa tagihan transaksi
+   */
+  async recordPayment(id, { additionalAmount, paymentMethod, notes }) {
+    const tx = await prisma.transaction.findFirst({
+      where: { id, deletedAt: null },
+    });
+
+    if (!tx) {
+      throw new Error('Transaksi tidak ditemukan');
+    }
+
+    const addPaid = Math.max(0, Number(additionalAmount) || 0);
+    const prevPaid = Number(tx.amountPaid) || 0;
+    const total = Number(tx.total) || 0;
+    const newAmountPaid = prevPaid + addPaid;
+    const changeAmount = Math.max(0, newAmountPaid - total);
+    const newPaymentStatus = determinePaymentStatus(newAmountPaid, total);
+
+    const paymentNote = notes 
+      ? (tx.notes ? `${tx.notes} | ${notes}` : notes)
+      : tx.notes;
+
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data: {
+        amountPaid: newAmountPaid,
+        changeAmount,
+        paymentStatus: newPaymentStatus,
+        paymentMethod: paymentMethod || tx.paymentMethod || 'Tunai',
+        notes: paymentNote,
+      },
+    });
+
+    return {
+      ...updated,
+      amountPaid: newAmountPaid,
+      paymentStatus: newPaymentStatus,
+      durationHours: updated.durationHours || (updated.durationDays || 1) * 24,
+      extraCosts: updated.extraCosts ? JSON.parse(updated.extraCosts) : [],
       createdAt: updated.createdAt.toISOString(),
     };
   },

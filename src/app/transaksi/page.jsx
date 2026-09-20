@@ -13,11 +13,13 @@ import {
   completeTransaction, 
   deleteTransaction, 
   getTransactionStatus, 
+  getPaymentStatus,
+  recordTransactionPayment,
   formatRupiah, 
   formatDateTime 
 } from '../../lib/storage';
 import { showToast, showConfirm, showError } from '../../lib/sweetalert';
-import { SkeletonList, SkeletonSearchBar } from '../../components/Skeleton';
+import { SkeletonList } from '../../components/Skeleton';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 import { exportTransactionsToExcel } from '../../lib/excelExport';
@@ -30,11 +32,19 @@ export default function TransaksiPage() {
   const [loading, setLoading] = useState(() => getTransactions().length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all, booking, aktif, hampir-selesai, terlambat, selesai
+  const [paymentFilter, setPaymentFilter] = useState('all'); // all, terhutang, sebagian, lunas
   const [processingId, setProcessingId] = useState(null);
 
   // Modals
   const [detailTx, setDetailTx] = useState(null);
   const [receiptTx, setReceiptTx] = useState(null);
+
+  // Quick Settle / Pelunasan Modal State
+  const [payingTx, setPayingTx] = useState(null);
+  const [additionalPayment, setAdditionalPayment] = useState('');
+  const [payMethod, setPayMethod] = useState('Tunai');
+  const [payNotes, setPayNotes] = useState('');
+  const [isSubmittingPay, setIsSubmittingPay] = useState(false);
 
   const loadData = async () => {
     try {
@@ -56,20 +66,22 @@ export default function TransaksiPage() {
     loadData();
   }, []);
 
-  // Tambahkan kalkulasi status dinamis untuk setiap transaksi
+  // Tambahkan kalkulasi status dinamis dan status pembayaran untuk setiap transaksi
   const transactionsWithStatus = useMemo(() => {
     return transactions.map((tx) => {
       const st = getTransactionStatus(tx);
+      const paySt = getPaymentStatus(tx);
       const vehicle = fleet.find((f) => f.nopol?.toUpperCase() === tx.nopol?.toUpperCase());
       return {
         ...tx,
         calculatedStatus: st,
+        calculatedPaymentStatus: paySt,
         vehicleModel: vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Motor Rental'
       };
     });
   }, [transactions, fleet]);
 
-  // Hitung jumlah data per status untuk badge filter tab
+  // Hitung jumlah data per status sewa untuk badge filter tab
   const counts = useMemo(() => {
     const res = {
       all: transactionsWithStatus.length,
@@ -90,16 +102,40 @@ export default function TransaksiPage() {
     return res;
   }, [transactionsWithStatus]);
 
-  // Filter daftar transaksi berdasarkan nama pelanggan (prioritas utama) dan tab status
+  // Hitung jumlah data per status pembayaran untuk badge filter pembayaran
+  const paymentCounts = useMemo(() => {
+    const res = {
+      all: transactionsWithStatus.length,
+      terhutang: 0,
+      sebagian: 0,
+      lunas: 0
+    };
+
+    transactionsWithStatus.forEach((tx) => {
+      const k = tx.calculatedPaymentStatus.key;
+      if (res[k] !== undefined) {
+        res[k]++;
+      }
+    });
+
+    return res;
+  }, [transactionsWithStatus]);
+
+  // Filter daftar transaksi berdasarkan pencarian, tab status sewa, dan tab status pembayaran
   const filteredTransactions = useMemo(() => {
     let list = transactionsWithStatus;
 
-    // Filter tab status
+    // Filter tab status sewa
     if (statusFilter !== 'all') {
       list = list.filter((tx) => tx.calculatedStatus.key === statusFilter);
     }
 
-    // Filter pencarian nama pelanggan (dan nomor plat / telp sebagai toleransi tambahan)
+    // Filter status pembayaran
+    if (paymentFilter !== 'all') {
+      list = list.filter((tx) => tx.calculatedPaymentStatus.key === paymentFilter);
+    }
+
+    // Filter pencarian nama pelanggan (dan nomor plat / telp)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter((tx) => {
@@ -111,7 +147,7 @@ export default function TransaksiPage() {
     }
 
     return list;
-  }, [transactionsWithStatus, statusFilter, searchQuery]);
+  }, [transactionsWithStatus, statusFilter, paymentFilter, searchQuery]);
 
   // Handler: Aktifkan Sewa (untuk Booking)
   const handleActivate = async (tx) => {
@@ -201,13 +237,57 @@ export default function TransaksiPage() {
     }
   };
 
+  // Handler: Buka Modal Pelunasan Cepat
+  const handleOpenPayment = (tx) => {
+    const paySt = tx.calculatedPaymentStatus || getPaymentStatus(tx);
+    setPayingTx(tx);
+    setAdditionalPayment(String(paySt.remaining > 0 ? paySt.remaining : ''));
+    setPayMethod(tx.paymentMethod || 'Tunai');
+    setPayNotes('Pelunasan sisa rental motor');
+  };
+
+  // Handler: Simpan Pembayaran Pelunasan
+  const handleSubmitPayment = async (e) => {
+    e.preventDefault();
+    if (!payingTx) return;
+
+    const nominal = Number(additionalPayment);
+    if (isNaN(nominal) || nominal <= 0) {
+      showError('Input Tidak Valid', 'Masukkan nominal pembayaran tambahan yang valid.');
+      return;
+    }
+
+    setIsSubmittingPay(true);
+    try {
+      await recordTransactionPayment(payingTx.id, {
+        additionalAmount: nominal,
+        paymentMethod: payMethod,
+        notes: payNotes.trim()
+      });
+      showToast('Pembayaran berhasil dicatat!');
+      setPayingTx(null);
+      await loadData();
+    } catch (err) {
+      showError('Gagal Mencatat Pembayaran', err.message || 'Terjadi kesalahan server');
+    } finally {
+      setIsSubmittingPay(false);
+    }
+  };
+
   const tabs = [
-    { key: 'all', label: 'Semua' },
+    { key: 'all', label: 'Semua Sewa' },
     { key: 'booking', label: 'Booking' },
     { key: 'aktif', label: 'Aktif' },
     { key: 'hampir-selesai', label: 'Hampir Selesai' },
     { key: 'terlambat', label: 'Terlambat' },
     { key: 'selesai', label: 'Selesai' }
+  ];
+
+  const paymentTabs = [
+    { key: 'all', label: 'Semua Status Bayar', dotColor: '#64748b' },
+    { key: 'terhutang', label: 'Terhutang', dotColor: '#e11d48' },
+    { key: 'sebagian', label: 'Sebagian', dotColor: '#d97706' },
+    { key: 'lunas', label: 'Lunas', dotColor: '#16a34a' }
   ];
 
   return (
@@ -219,7 +299,7 @@ export default function TransaksiPage() {
             Transaksi Sewa
           </h2>
           <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Kelola status sewa, waktu pengembalian, dan armada rental
+            Kelola status sewa, waktu pengembalian, dan status pembayaran rental
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -242,14 +322,14 @@ export default function TransaksiPage() {
         </div>
       </div>
 
-      {/* 1. Tampilan Pertama: Pencarian Berdasarkan Nama Pelanggan */}
+      {/* 1. Pencarian Berdasarkan Nama Pelanggan */}
       <div style={{ marginBottom: '14px' }}>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input
             id="search-customer-input"
             type="text"
             className="form-input"
-            placeholder="Cari berdasarkan nama pelanggan..."
+            placeholder="Cari berdasarkan nama pelanggan, no. plat, atau no. HP..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -285,19 +365,19 @@ export default function TransaksiPage() {
         </div>
         {searchQuery.trim() && (
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', paddingLeft: '4px' }}>
-            Menyaring hasil untuk pelanggan: <strong>{searchQuery}</strong>
+            Menyaring hasil untuk: <strong>{searchQuery}</strong>
           </div>
         )}
       </div>
 
-      {/* 2. Filter Tab Status (Booking, Aktif, Hampir Selesai, Terlambat, Selesai) */}
+      {/* 2. Filter Status Sewa (Booking, Aktif, Hampir Selesai, Terlambat, Selesai) */}
       <div 
         style={{ 
           display: 'flex', 
           overflowX: 'auto', 
           gap: '6px', 
           paddingBottom: '8px', 
-          marginBottom: '16px',
+          marginBottom: '10px',
           scrollbarWidth: 'none',
           msOverflowStyle: 'none'
         }}
@@ -312,7 +392,7 @@ export default function TransaksiPage() {
               onClick={() => setStatusFilter(tab.key)}
               style={{
                 flexShrink: 0,
-                padding: '8px 12px',
+                padding: '7px 12px',
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: isActive ? 700 : 500,
@@ -344,7 +424,72 @@ export default function TransaksiPage() {
         })}
       </div>
 
-      {/* 3. Daftar Transaksi */}
+      {/* 3. Filter Status Pembayaran (Terhutang, Sebagian, Lunas) */}
+      <div 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px', 
+          overflowX: 'auto',
+          paddingBottom: '8px', 
+          marginBottom: '16px',
+          scrollbarWidth: 'none'
+        }}
+      >
+        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '4px', flexShrink: 0 }}>
+          Status Bayar:
+        </span>
+        {paymentTabs.map((tab) => {
+          const isActive = paymentFilter === tab.key;
+          const count = paymentCounts[tab.key] || 0;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setPaymentFilter(tab.key)}
+              style={{
+                flexShrink: 0,
+                padding: '5px 11px',
+                borderRadius: '16px',
+                fontSize: '11px',
+                fontWeight: isActive ? 700 : 600,
+                border: isActive ? `1.5px solid ${tab.dotColor}` : '1px solid var(--border)',
+                backgroundColor: isActive ? `${tab.dotColor}15` : '#ffffff',
+                color: isActive ? tab.dotColor : 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span 
+                style={{ 
+                  width: '7px', 
+                  height: '7px', 
+                  borderRadius: '50%', 
+                  backgroundColor: tab.dotColor 
+                }} 
+              />
+              <span>{tab.label}</span>
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  padding: '0 5px',
+                  borderRadius: '8px',
+                  backgroundColor: isActive ? `${tab.dotColor}25` : 'var(--bg-card)',
+                  color: isActive ? tab.dotColor : 'var(--text-dim)'
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 4. Daftar Transaksi */}
       {loading ? (
         <SkeletonList count={4} variant="transaction" />
       ) : filteredTransactions.length === 0 ? (
@@ -357,8 +502,8 @@ export default function TransaksiPage() {
           </div>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
             {searchQuery 
-              ? `Tidak ditemukan transaksi dengan nama pelanggan "${searchQuery}"`
-              : `Belum ada data pada status "${tabs.find(t => t.key === statusFilter)?.label || statusFilter}"`
+              ? `Tidak ditemukan transaksi dengan kata kunci "${searchQuery}"`
+              : `Belum ada data pada filter yang dipilih.`
             }
           </p>
           <Link href="/" className="btn btn-secondary btn-sm" style={{ display: 'inline-block' }}>
@@ -369,6 +514,7 @@ export default function TransaksiPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {filteredTransactions.map((tx) => {
             const st = tx.calculatedStatus;
+            const paySt = tx.calculatedPaymentStatus || getPaymentStatus(tx);
             const isProcessing = processingId === tx.id;
 
             return (
@@ -379,11 +525,11 @@ export default function TransaksiPage() {
                   borderRadius: '14px', 
                   padding: '14px 16px', 
                   backgroundColor: '#ffffff',
-                  border: st.key === 'terlambat' ? '1.5px solid rgba(225, 29, 72, 0.4)' : '1px solid var(--border)',
+                  border: st.key === 'terlambat' ? '1.5px solid rgba(225, 29, 72, 0.4)' : (paySt.key === 'terhutang' ? '1.5px solid rgba(225, 29, 72, 0.2)' : '1px solid var(--border)'),
                   boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
                 }}
               >
-                {/* Baris Atas: Nama Pelanggan & Badge Status */}
+                {/* Baris Atas: Nama Pelanggan & Badges Status */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <div>
                     <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-main)' }}>
@@ -403,20 +549,38 @@ export default function TransaksiPage() {
                     )}
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
-                    <span 
-                      className={`badge ${st.badgeClass}`} 
-                      style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', fontWeight: 700 }}
-                    >
-                      {st.label}
-                    </span>
-                    <div style={{ fontSize: '10px', color: st.color, fontWeight: 700, marginTop: '3px' }}>
+                  {/* Kanan: Badge Status Sewa & Badge Status Bayar */}
+                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                      {/* Badge Status Pembayaran */}
+                      <span 
+                        className={`badge ${paySt.badgeClass}`}
+                        style={{ 
+                          fontSize: '10px', 
+                          padding: '3px 8px', 
+                          borderRadius: '10px', 
+                          fontWeight: 700 
+                        }}
+                      >
+                        {paySt.label}
+                      </span>
+
+                      {/* Badge Status Sewa */}
+                      <span 
+                        className={`badge ${st.badgeClass}`} 
+                        style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', fontWeight: 700 }}
+                      >
+                        {st.label}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '10px', color: st.color, fontWeight: 700 }}>
                       {st.subtext}
                     </div>
                   </div>
                 </div>
 
-                {/* Detail Kendaraan & Jadwal */}
+                {/* Detail Kendaraan & Biaya */}
                 <div 
                   style={{ 
                     backgroundColor: 'var(--bg-card)', 
@@ -449,14 +613,49 @@ export default function TransaksiPage() {
                       {formatDateTime(tx.endDate)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '4px', marginTop: '2px' }}>
+
+                  {/* Rincian Finansial & Pembayaran */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '2px' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Total Biaya:</span>
                     <strong style={{ color: 'var(--text-main)', fontSize: '13px' }}>{formatRupiah(tx.total)}</strong>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Sudah Dibayar ({tx.paymentMethod || 'Tunai'}):</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{formatRupiah(paySt.paid)}</span>
+                  </div>
+
+                  {paySt.remaining > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--accent-rose)', fontWeight: 800 }}>
+                      <span>Sisa Tagihan (Hutang):</span>
+                      <span>{formatRupiah(paySt.remaining)}</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Tombol Aksi: Bersih, Teks Murni Tanpa Hardcoded Icon */}
+                {/* Tombol Aksi */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  {/* Tombol Pelunasan Cepat jika belum lunas */}
+                  {paySt.key !== 'lunas' && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => handleOpenPayment(tx)}
+                      disabled={isProcessing}
+                      style={{ 
+                        fontWeight: 700, 
+                        padding: '7px 14px', 
+                        backgroundColor: '#f59e0b', 
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px'
+                      }}
+                      title="Catat pelunasan atau cicilan sisa tagihan"
+                    >
+                      Pelunasan
+                    </button>
+                  )}
+
                   {/* Tombol Aktifkan (Khusus Booking) */}
                   {st.key === 'booking' && (
                     <button
@@ -531,6 +730,10 @@ export default function TransaksiPage() {
             setDetailTx(null);
             setReceiptTx(t);
           }}
+          onSettle={(t) => {
+            setDetailTx(null);
+            handleOpenPayment(t);
+          }}
         />
       )}
 
@@ -541,6 +744,179 @@ export default function TransaksiPage() {
           settings={settings}
           onClose={() => setReceiptTx(null)}
         />
+      )}
+
+      {/* Modal Pelunasan Cepat (Quick Settle) */}
+      {payingTx && (
+        <div 
+          className="modal-overlay" 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+            zIndex: 9999, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: '16px',
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={() => !isSubmittingPay && setPayingTx(null)}
+        >
+          <div 
+            className="modal-content"
+            style={{ 
+              backgroundColor: '#ffffff', 
+              borderRadius: '16px', 
+              width: '100%', 
+              maxWidth: '460px', 
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div 
+              style={{ 
+                padding: '16px 20px', 
+                borderBottom: '1px solid var(--border)', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center' 
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-main)' }}>
+                  Catat Pembayaran / Pelunasan
+                </h3>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  ID: {payingTx.id} | {payingTx.customerName}
+                </span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => !isSubmittingPay && setPayingTx(null)}
+                style={{ 
+                  background: 'transparent', 
+                  border: 'none', 
+                  fontSize: '20px', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-muted)' 
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitPayment} style={{ padding: '20px' }}>
+              {/* Ringkasan Tagihan */}
+              <div 
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  padding: '12px 14px', 
+                  borderRadius: '12px', 
+                  marginBottom: '16px', 
+                  fontSize: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Unit Motor:</span>
+                  <strong>{payingTx.nopol}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Biaya Sewa:</span>
+                  <strong>{formatRupiah(payingTx.total)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Sudah Dibayar:</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>
+                    {formatRupiah(payingTx.amountPaid || 0)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '6px', color: 'var(--accent-rose)', fontWeight: 800, fontSize: '13px' }}>
+                  <span>Sisa Tagihan Saat Ini:</span>
+                  <span>{formatRupiah(Math.max(0, (payingTx.total || 0) - (payingTx.amountPaid || 0)))}</span>
+                </div>
+              </div>
+
+              {/* Form Input Pembayaran */}
+              <div style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Jumlah Uang Diterima (Rp) *
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  placeholder="Masukkan nominal bayar..."
+                  value={additionalPayment}
+                  onChange={(e) => setAdditionalPayment(e.target.value)}
+                  required
+                  min="1"
+                  style={{ width: '100%', fontSize: '15px', fontWeight: 700, padding: '10px 12px', borderRadius: '10px' }}
+                />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Isi sesuai sisa tagihan untuk pelunasan langsung, atau isi sebagian untuk cicilan.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Metode Pembayaran *
+                </label>
+                <select
+                  className="form-control"
+                  value={payMethod}
+                  onChange={(e) => setPayMethod(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', fontSize: '13px' }}
+                >
+                  <option value="Tunai">Tunai (Cash)</option>
+                  <option value="Transfer Bank">Transfer Bank</option>
+                  <option value="QRIS">QRIS</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Catatan Pembayaran
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Contoh: Pelunasan saat pengembalian helm"
+                  value={payNotes}
+                  onChange={(e) => setPayNotes(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', fontSize: '13px' }}
+                />
+              </div>
+
+              {/* Tombol Aksi */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setPayingTx(null)}
+                  disabled={isSubmittingPay}
+                  style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 600 }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSubmittingPay}
+                  style={{ flex: 1.5, padding: '10px', borderRadius: '10px', fontWeight: 700 }}
+                >
+                  {isSubmittingPay ? 'Menyimpan...' : 'Simpan Pembayaran'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

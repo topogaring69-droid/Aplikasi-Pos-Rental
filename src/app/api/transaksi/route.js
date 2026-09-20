@@ -36,6 +36,12 @@ export async function PUT(request) {
       data = await transactionService.activateTransaction(tx.id);
     } else if (tx.action === 'complete') {
       data = await transactionService.completeTransaction(tx.id, tx.notes);
+    } else if (tx.action === 'pay') {
+      data = await transactionService.recordPayment(tx.id, {
+        additionalAmount: tx.additionalAmount,
+        paymentMethod: tx.paymentMethod,
+        notes: tx.notes
+      });
     } else {
       data = await transactionService.update(tx.id, tx);
     }

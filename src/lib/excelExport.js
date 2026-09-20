@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { formatDateTime, formatDateOnly, formatRupiah } from './storage';
+import { formatDateTime, formatDateOnly, formatRupiah, getPaymentStatus } from './storage';
 import { formatRentalDuration } from './rentalPricing';
 import { showAlert } from './sweetalert';
 
@@ -122,9 +122,12 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     'Durasi',
     'Tarif Pokok (Rp)',
     'Biaya Tambahan (Rp)',
-    'Total Bayar (Rp)',
+    'Total Tagihan (Rp)',
+    'Dibayar (Rp)',
+    'Sisa Tagihan (Rp)',
     'Metode Bayar',
     'Status Sewa',
+    'Status Bayar',
   ];
 
   const headerRow = ws.addRow(headers);
@@ -137,20 +140,24 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
   });
 
   let grandTotal = 0;
+  let grandTotalPaid = 0;
+  let grandTotalRemaining = 0;
 
   // Data Rows
   transactions.forEach((tx, idx) => {
     const isEven = idx % 2 === 1;
     const vehicle = fleet.find((f) => f.nopol?.toUpperCase() === tx.nopol?.toUpperCase());
     const vehicleName = vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Motor Rental';
-    const hours = tx.durationHours || (tx.durationDays || 1) * 24;
     const extraTotal = Array.isArray(tx.extraCosts)
       ? tx.extraCosts.reduce((a, b) => a + (Number(b.amount) || 0), 0)
       : 0;
 
+    const paySt = getPaymentStatus(tx);
     grandTotal += Number(tx.total) || 0;
+    grandTotalPaid += paySt.paid;
+    grandTotalRemaining += paySt.remaining;
 
-    // Hitung status label
+    // Hitung status label sewa
     let stLabel = 'Aktif';
     let stBg = COLORS.STATUS_GREEN_BG;
     let stTxt = COLORS.STATUS_GREEN_TXT;
@@ -174,6 +181,17 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       }
     }
 
+    // Hitung status warna pembayaran
+    let payBg = COLORS.STATUS_GREEN_BG;
+    let payTxt = COLORS.STATUS_GREEN_TXT;
+    if (paySt.key === 'terhutang') {
+      payBg = COLORS.STATUS_RED_BG;
+      payTxt = COLORS.STATUS_RED_TXT;
+    } else if (paySt.key === 'sebagian') {
+      payBg = COLORS.STATUS_YELLOW_BG;
+      payTxt = COLORS.STATUS_YELLOW_TXT;
+    }
+
     const row = ws.addRow([
       idx + 1,
       tx.id,
@@ -187,8 +205,11 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       Number(tx.rentalPrice) || 0,
       extraTotal,
       Number(tx.total) || 0,
+      paySt.paid,
+      paySt.remaining,
       tx.paymentMethod || 'Tunai',
       stLabel,
+      paySt.label.toUpperCase(),
     ]);
 
     row.height = 22;
@@ -203,17 +224,24 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       }
 
       // Format mata uang & alignment kolom
-      if (colNum === 1 || colNum === 5 || colNum === 9 || colNum === 13) {
+      if (colNum === 1 || colNum === 5 || colNum === 9 || colNum === 15) {
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      } else if (colNum >= 10 && colNum <= 12) {
+      } else if (colNum >= 10 && colNum <= 14) {
         cell.alignment = { vertical: 'middle', horizontal: 'right' };
         cell.numFmt = '#,##0';
       }
 
-      // Highlight status badge
-      if (colNum === 14) {
+      // Highlight status sewa
+      if (colNum === 16) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: stBg } };
         cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: stTxt } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+
+      // Highlight status pembayaran
+      if (colNum === 17) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: payBg } };
+        cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: payTxt } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       }
     });
@@ -233,6 +261,9 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     '',
     '',
     grandTotal,
+    grandTotalPaid,
+    grandTotalRemaining,
+    '',
     '',
     '',
   ]);
@@ -242,7 +273,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     cell.font = { name: 'Calibri', size: 11, bold: true };
     cell.border = BORDER_TOTAL;
     cell.alignment = { vertical: 'middle' };
-    if (colNum === 12) {
+    if (colNum >= 12 && colNum <= 14) {
       cell.alignment = { vertical: 'middle', horizontal: 'right' };
       cell.numFmt = '#,##0';
     }
