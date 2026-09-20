@@ -220,7 +220,7 @@ export const transactionService = {
     });
 
     if (!tx) {
-      throw new Error('Transaksi tidak ditemukan');
+      return { success: true, id, message: 'Transaksi sudah tidak ada di database' };
     }
 
     // Kembalikan armada menjadi available jika transaksi dibatalkan / dihapus

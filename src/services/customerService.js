@@ -69,7 +69,7 @@ export const customerService = {
     });
 
     if (!cust) {
-      throw new Error('Pelanggan tidak ditemukan');
+      return { success: true, id, message: 'Pelanggan sudah tidak ada di database' };
     }
 
     await prisma.customer.update({

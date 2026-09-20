@@ -44,38 +44,40 @@ export function getCustomers() {
 export async function saveCustomer(cust) {
   if (!isBrowser) return;
   const list = getCustomers();
-  const index = list.findIndex((c) => c.id === cust.id);
+  const isEdit = list.some((c) => c.id === cust.id);
+
+  const res = await fetch('/api/pelanggan', {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cust)
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyimpan pelanggan (${res.status})`);
+  }
+
+  const saved = json.data || cust;
+  const index = list.findIndex((c) => c.id === saved.id);
   if (index >= 0) {
-    list[index] = cust;
+    list[index] = saved;
   } else {
-    list.unshift(cust);
+    list.unshift(saved);
   }
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
-
-  // Sync ke backend
-  try {
-    await fetch('/api/pelanggan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cust)
-    });
-  } catch (e) {
-    console.warn('Sync pelanggan ke server tertunda:', e);
-  }
   return list;
 }
 
 export async function deleteCustomer(id) {
   if (!isBrowser) return;
+  const res = await fetch(`/api/pelanggan?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menghapus pelanggan (${res.status})`);
+  }
+
   const list = getCustomers().filter((c) => c.id !== id);
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
-
-  // Sync ke backend
-  try {
-    await fetch(`/api/pelanggan?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-  } catch (e) {
-    console.warn('Hapus pelanggan di server tertunda:', e);
-  }
   return list;
 }
 
@@ -113,23 +115,27 @@ export function getFleet() {
 export async function saveFleetItem(item) {
   if (!isBrowser) return;
   const list = getFleet();
-  const index = list.findIndex((m) => m.id === item.id);
+  const isEdit = list.some((m) => m.id === item.id);
+
+  const res = await fetch('/api/armada', {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyimpan armada (${res.status})`);
+  }
+
+  const saved = json.data || item;
+  const index = list.findIndex((m) => m.id === saved.id);
   if (index >= 0) {
-    list[index] = item;
+    list[index] = saved;
   } else {
-    list.unshift(item);
+    list.unshift(saved);
   }
   localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
-
-  try {
-    await fetch('/api/armada', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item)
-    });
-  } catch (e) {
-    console.warn('Sync armada ke server tertunda:', e);
-  }
   return list;
 }
 
@@ -142,7 +148,7 @@ export async function updateVehicleStatus(nopol, status) {
     localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
     try {
       await fetch('/api/armada', {
-        method: 'POST',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(list[index])
       });
@@ -152,14 +158,14 @@ export async function updateVehicleStatus(nopol, status) {
 
 export async function deleteFleetItem(id) {
   if (!isBrowser) return;
+  const res = await fetch(`/api/armada?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menghapus armada (${res.status})`);
+  }
+
   const list = getFleet().filter((m) => m.id !== id);
   localStorage.setItem(KEYS.FLEET, JSON.stringify(list));
-
-  try {
-    await fetch(`/api/armada?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-  } catch (e) {
-    console.warn('Hapus armada di server tertunda:', e);
-  }
   return list;
 }
 
@@ -201,35 +207,45 @@ export async function saveTransaction(tx) {
   const isEdit = index >= 0;
   const oldItem = isEdit ? list[index] : null;
 
+  const res = await fetch('/api/transaksi', {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tx)
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyimpan transaksi (${res.status})`);
+  }
+
+  const saved = json.data || tx;
+
   if (isEdit) {
-    list[index] = tx;
+    list[index] = saved;
   } else {
-    list.unshift(tx);
+    list.unshift(saved);
   }
   localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(list));
 
   // Jika nopol ganti saat edit, kembalikan nopol lama ke available
-  if (oldItem && oldItem.nopol && oldItem.nopol.toUpperCase() !== tx.nopol.toUpperCase()) {
+  if (oldItem && oldItem.nopol && oldItem.nopol.toUpperCase() !== saved.nopol?.toUpperCase()) {
     updateVehicleStatus(oldItem.nopol, 'available');
   }
-  if (tx.nopol) {
-    updateVehicleStatus(tx.nopol, 'rented');
+  if (saved.nopol) {
+    updateVehicleStatus(saved.nopol, 'rented');
   }
 
-  try {
-    await fetch('/api/transaksi', {
-      method: isEdit ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tx)
-    });
-  } catch (e) {
-    console.warn('Sync transaksi ke server tertunda:', e);
-  }
   return list;
 }
 
 export async function deleteTransaction(id) {
   if (!isBrowser) return;
+  const res = await fetch(`/api/transaksi?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menghapus transaksi (${res.status})`);
+  }
+
   const list = getTransactions();
   const item = list.find((t) => t.id === id);
   if (item && item.nopol) {
@@ -237,12 +253,6 @@ export async function deleteTransaction(id) {
   }
   const filtered = list.filter((t) => t.id !== id);
   localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(filtered));
-
-  try {
-    await fetch(`/api/transaksi?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-  } catch (e) {
-    console.warn('Hapus transaksi di server tertunda:', e);
-  }
   return filtered;
 }
 

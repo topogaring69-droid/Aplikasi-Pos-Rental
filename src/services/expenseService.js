@@ -145,7 +145,7 @@ export const expenseService = {
     });
 
     if (!exp) {
-      throw new Error('Pengeluaran tidak ditemukan');
+      return { success: true, id, message: 'Pengeluaran sudah tidak ada di database' };
     }
 
     await prisma.expense.update({
