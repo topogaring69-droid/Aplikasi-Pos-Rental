@@ -7,6 +7,7 @@ import BottomNav from './BottomNav';
 import PinLockModal from './PinLockModal';
 import NotFoundView from './NotFoundView';
 import { getSettings } from '../lib/storage';
+import { showConfirm } from '../lib/sweetalert';
 
 export default function AppClientWrapper({ children }) {
   const pathname = usePathname();
@@ -61,7 +62,16 @@ export default function AppClientWrapper({ children }) {
   };
 
   const handleLogout = async () => {
-    if (confirm('Apakah Anda yakin ingin logout dari perangkat ini? (Perangkat lain akan tetap aktif)')) {
+    const confirmed = await showConfirm({
+      title: 'Logout dari Perangkat Ini?',
+      text: 'Apakah Anda yakin ingin logout? Sesi pada perangkat lain akan tetap aktif.',
+      confirmButtonText: 'Ya, Logout',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+
+    if (confirmed) {
       try {
         await fetch('/api/auth/logout', { method: 'POST' });
       } catch (e) {}

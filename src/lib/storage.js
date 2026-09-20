@@ -1,4 +1,4 @@
-import { initialCustomers, initialFleet, initialTransactions, initialExpenses, initialSettings } from './seedData.js';
+import { initialSettings } from './seedData.js';
 
 const KEYS = {
   CUSTOMERS: 'pos_customers',
@@ -13,33 +13,31 @@ const isBrowser = typeof window !== 'undefined';
 // ==================== PELANGGAN (CUSTOMERS) ====================
 
 export async function fetchCustomers() {
-  if (!isBrowser) return initialCustomers;
+  if (!isBrowser) return [];
   try {
     const res = await fetch('/api/pelanggan');
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && Array.isArray(json.data)) {
         localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(json.data));
         return json.data;
       }
     }
   } catch (e) {
-    console.warn('Gagal fetch pelanggan dari API SQLite, fallback lokal:', e);
+    console.warn('Gagal fetch pelanggan dari API, fallback cache lokal:', e);
   }
   return getCustomers();
 }
 
 export function getCustomers() {
-  if (!isBrowser) return initialCustomers;
+  if (!isBrowser) return [];
   try {
     const data = localStorage.getItem(KEYS.CUSTOMERS);
-    if (!data) {
-      localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(initialCustomers));
-      return initialCustomers;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return initialCustomers;
+    return [];
   }
 }
 
@@ -54,7 +52,7 @@ export async function saveCustomer(cust) {
   }
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
 
-  // Sync ke SQLite backend
+  // Sync ke backend
   try {
     await fetch('/api/pelanggan', {
       method: 'POST',
@@ -62,7 +60,7 @@ export async function saveCustomer(cust) {
       body: JSON.stringify(cust)
     });
   } catch (e) {
-    console.warn('Sync pelanggan ke SQLite tertunda:', e);
+    console.warn('Sync pelanggan ke server tertunda:', e);
   }
   return list;
 }
@@ -72,11 +70,11 @@ export async function deleteCustomer(id) {
   const list = getCustomers().filter((c) => c.id !== id);
   localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(list));
 
-  // Sync ke SQLite backend
+  // Sync ke backend
   try {
     await fetch(`/api/pelanggan?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {
-    console.warn('Hapus pelanggan di SQLite tertunda:', e);
+    console.warn('Hapus pelanggan di server tertunda:', e);
   }
   return list;
 }
@@ -84,33 +82,31 @@ export async function deleteCustomer(id) {
 // ==================== ARMADA (FLEET) ====================
 
 export async function fetchFleet() {
-  if (!isBrowser) return initialFleet;
+  if (!isBrowser) return [];
   try {
     const res = await fetch('/api/armada');
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && Array.isArray(json.data)) {
         localStorage.setItem(KEYS.FLEET, JSON.stringify(json.data));
         return json.data;
       }
     }
   } catch (e) {
-    console.warn('Gagal fetch armada dari API SQLite, fallback lokal:', e);
+    console.warn('Gagal fetch armada dari API, fallback cache lokal:', e);
   }
   return getFleet();
 }
 
 export function getFleet() {
-  if (!isBrowser) return initialFleet;
+  if (!isBrowser) return [];
   try {
     const data = localStorage.getItem(KEYS.FLEET);
-    if (!data) {
-      localStorage.setItem(KEYS.FLEET, JSON.stringify(initialFleet));
-      return initialFleet;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return initialFleet;
+    return [];
   }
 }
 
@@ -132,7 +128,7 @@ export async function saveFleetItem(item) {
       body: JSON.stringify(item)
     });
   } catch (e) {
-    console.warn('Sync armada ke SQLite tertunda:', e);
+    console.warn('Sync armada ke server tertunda:', e);
   }
   return list;
 }
@@ -162,7 +158,7 @@ export async function deleteFleetItem(id) {
   try {
     await fetch(`/api/armada?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {
-    console.warn('Hapus armada di SQLite tertunda:', e);
+    console.warn('Hapus armada di server tertunda:', e);
   }
   return list;
 }
@@ -170,33 +166,31 @@ export async function deleteFleetItem(id) {
 // ==================== TRANSAKSI ====================
 
 export async function fetchTransactions() {
-  if (!isBrowser) return initialTransactions;
+  if (!isBrowser) return [];
   try {
     const res = await fetch('/api/transaksi');
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && Array.isArray(json.data)) {
         localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(json.data));
         return json.data;
       }
     }
   } catch (e) {
-    console.warn('Gagal fetch transaksi dari API SQLite, fallback lokal:', e);
+    console.warn('Gagal fetch transaksi dari API, fallback cache lokal:', e);
   }
   return getTransactions();
 }
 
 export function getTransactions() {
-  if (!isBrowser) return initialTransactions;
+  if (!isBrowser) return [];
   try {
     const data = localStorage.getItem(KEYS.TRANSACTIONS);
-    if (!data) {
-      localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(initialTransactions));
-      return initialTransactions;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return initialTransactions;
+    return [];
   }
 }
 
@@ -229,7 +223,7 @@ export async function saveTransaction(tx) {
       body: JSON.stringify(tx)
     });
   } catch (e) {
-    console.warn('Sync transaksi ke SQLite tertunda:', e);
+    console.warn('Sync transaksi ke server tertunda:', e);
   }
   return list;
 }
@@ -247,7 +241,7 @@ export async function deleteTransaction(id) {
   try {
     await fetch(`/api/transaksi?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {
-    console.warn('Hapus transaksi di SQLite tertunda:', e);
+    console.warn('Hapus transaksi di server tertunda:', e);
   }
   return filtered;
 }
@@ -255,33 +249,31 @@ export async function deleteTransaction(id) {
 // ==================== PENGELUARAN ====================
 
 export async function fetchExpenses() {
-  if (!isBrowser) return initialExpenses;
+  if (!isBrowser) return [];
   try {
     const res = await fetch('/api/pengeluaran');
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && Array.isArray(json.data)) {
         localStorage.setItem(KEYS.EXPENSES, JSON.stringify(json.data));
         return json.data;
       }
     }
   } catch (e) {
-    console.warn('Gagal fetch pengeluaran dari API SQLite, fallback lokal:', e);
+    console.warn('Gagal fetch pengeluaran dari API, fallback cache lokal:', e);
   }
   return getExpenses();
 }
 
 export function getExpenses() {
-  if (!isBrowser) return initialExpenses;
+  if (!isBrowser) return [];
   try {
     const data = localStorage.getItem(KEYS.EXPENSES);
-    if (!data) {
-      localStorage.setItem(KEYS.EXPENSES, JSON.stringify(initialExpenses));
-      return initialExpenses;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return initialExpenses;
+    return [];
   }
 }
 
@@ -344,7 +336,7 @@ export async function deleteExpense(id) {
   try {
     await fetch(`/api/pengeluaran?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {
-    console.warn('Hapus pengeluaran di SQLite tertunda:', e);
+    console.warn('Hapus pengeluaran di server tertunda:', e);
   }
   return list;
 }
@@ -363,7 +355,7 @@ export async function fetchSettings() {
       }
     }
   } catch (e) {
-    console.warn('Gagal fetch pengaturan dari API SQLite, fallback lokal:', e);
+    console.warn('Gagal fetch pengaturan dari API, fallback cache lokal:', e);
   }
   return getSettings();
 }
@@ -373,7 +365,6 @@ export function getSettings() {
   try {
     const data = localStorage.getItem(KEYS.SETTINGS);
     if (!data) {
-      localStorage.setItem(KEYS.SETTINGS, JSON.stringify(initialSettings));
       return initialSettings;
     }
     return { ...initialSettings, ...JSON.parse(data) };
@@ -393,7 +384,7 @@ export async function saveSettings(settings) {
       body: JSON.stringify(settings)
     });
   } catch (e) {
-    console.warn('Sync pengaturan ke SQLite tertunda:', e);
+    console.warn('Sync pengaturan ke server tertunda:', e);
   }
   return settings;
 }

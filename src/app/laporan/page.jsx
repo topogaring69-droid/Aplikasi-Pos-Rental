@@ -180,7 +180,7 @@ export default function LaporanPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Laporan Keuangan</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Arus Kas SQLite Pemasukan & Pengeluaran</p>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Arus Kas Pemasukan & Pengeluaran</p>
         </div>
         <button
           type="button"

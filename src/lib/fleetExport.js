@@ -1,11 +1,16 @@
 import { formatRupiah, formatDateTime } from './storage';
+import { showAlert } from './sweetalert';
 
 /**
  * 1. Ekspor Data Armada ke format CSV (Excel Ready dengan UTF-8 BOM)
  */
 export function exportFleetToCSV(fleet = []) {
   if (!fleet || fleet.length === 0) {
-    alert('Tidak ada data armada untuk diekspor.');
+    showAlert({
+      title: 'Armada Kosong',
+      text: 'Tidak ada data armada untuk diekspor.',
+      icon: 'info'
+    });
     return;
   }
 
@@ -72,7 +77,11 @@ export function exportFleetToPrintable(fleet = [], settings = {}) {
 
   const printWindow = window.open('', '_blank', 'width=900,height=750');
   if (!printWindow) {
-    alert('Harap izinkan pop-up pada browser untuk mencetak/menyimpan PDF inventaris armada.');
+    showAlert({
+      title: 'Izin Pop-up Dibutuhkan',
+      text: 'Harap izinkan pop-up pada browser untuk mencetak atau menyimpan PDF inventaris armada.',
+      icon: 'warning'
+    });
     return;
   }
 

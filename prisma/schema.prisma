@@ -40,73 +40,81 @@ model Session {
 
 // 3. Master Pelanggan (Customers)
 model Customer {
-  id               String   @id
+  id               String    @id
   name             String
-  phone            String?  @default("")
-  nik              String?  @default("")
-  address          String?  @default("")
-  emergencyContact String?  @default("") @map("emergency_contact")
-  notes            String?  @default("")
-  totalRentals     Int      @default(0) @map("total_rentals")
-  createdAt        DateTime @default(now()) @map("created_at")
+  phone            String?   @default("")
+  nik              String?   @default("")
+  address          String?   @default("")
+  emergencyContact String?   @default("") @map("emergency_contact")
+  notes            String?   @default("")
+  totalRentals     Int       @default(0) @map("total_rentals")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deletedAt        DateTime? @map("deleted_at")
 
+  @@index([deletedAt])
   @@map("customers")
 }
 
 // 4. Master Armada Motor (Fleet)
 model Fleet {
-  id              String   @id
-  nopol           String   @unique
+  id              String    @id
+  nopol           String    @unique
   brand           String
   model           String
-  color           String?  @default("")
-  year            String?  @default("")
-  dailyRate       Int      @map("daily_rate")
-  status          String   @default("available")
-  taxAnnualDate   String?  @map("tax_annual_date")
-  taxFiveYearDate String?  @map("tax_five_year_date")
-  createdAt       DateTime @default(now()) @map("created_at")
+  color           String?   @default("")
+  year            String?   @default("")
+  dailyRate       Int       @map("daily_rate")
+  status          String    @default("available")
+  taxAnnualDate   String?   @map("tax_annual_date")
+  taxFiveYearDate String?   @map("tax_five_year_date")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  deletedAt       DateTime? @map("deleted_at")
 
+  @@index([deletedAt])
   @@map("fleet")
 }
 
 // 5. Transaksi Rental (Transactions)
 model Transaction {
-  id            String   @id
+  id            String    @id
   nopol         String
-  customerId    String?  @map("customer_id")
-  customerName  String   @map("customer_name")
-  customerPhone String?  @default("") @map("customer_phone")
-  startDate     String   @map("start_date")
-  endDate       String   @map("end_date")
-  durationDays  Int      @default(1) @map("duration_days")
-  durationHours Int?     @default(24) @map("duration_hours")
-  rentalPrice   Int      @map("rental_price")
-  extraCosts    String?  @default("[]") @map("extra_costs")
+  customerId    String?   @map("customer_id")
+  customerName  String    @map("customer_name")
+  customerPhone String?   @default("") @map("customer_phone")
+  startDate     String    @map("start_date")
+  endDate       String    @map("end_date")
+  durationDays  Int       @default(1) @map("duration_days")
+  durationHours Int?      @default(24) @map("duration_hours")
+  rentalPrice   Int       @map("rental_price")
+  extraCosts    String?   @default("[]") @map("extra_costs")
   total         Int
-  paymentMethod String   @default("Tunai") @map("payment_method")
-  amountPaid    Int      @map("amount_paid")
-  changeAmount  Int      @default(0) @map("change_amount")
-  notes         String?  @default("")
-  createdAt     DateTime @default(now()) @map("created_at")
+  paymentMethod String    @default("Tunai") @map("payment_method")
+  amountPaid    Int       @map("amount_paid")
+  changeAmount  Int       @default(0) @map("change_amount")
+  notes         String?   @default("")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  deletedAt     DateTime? @map("deleted_at")
 
+  @@index([deletedAt])
   @@map("transactions")
 }
 
 // 6. Pengeluaran Operasional & Servis (Expenses)
 model Expense {
-  id               String   @id
-  isVehicleRelated Boolean  @default(false) @map("is_vehicle_related")
+  id               String    @id
+  isVehicleRelated Boolean   @default(false) @map("is_vehicle_related")
   nopol            String?
-  category         String   @default("Umum")
+  category         String    @default("Umum")
   amount           Int
-  description      String?  @default("")
+  description      String?   @default("")
   date             String
-  receiptPhoto     String?  @map("receipt_photo")
-  gdriveFileId     String?  @map("gdrive_file_id")
-  gdriveLink       String?  @map("gdrive_link")
-  createdAt        DateTime @default(now()) @map("created_at")
+  receiptPhoto     String?   @map("receipt_photo")
+  gdriveFileId     String?   @map("gdrive_file_id")
+  gdriveLink       String?   @map("gdrive_link")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deletedAt        DateTime? @map("deleted_at")
 
+  @@index([deletedAt])
   @@map("expenses")
 }
 

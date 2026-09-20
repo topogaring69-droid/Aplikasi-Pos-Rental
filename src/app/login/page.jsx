@@ -10,12 +10,13 @@ import {
   LogIn, 
   Smartphone, 
   ShieldCheck, 
-  AlertCircle 
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -253,8 +254,17 @@ export default function LoginPage() {
               boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)'
             }}
           >
-            <LogIn size={18} />
-            <span>{loading ? 'Memverifikasi...' : 'Masuk ke Aplikasi Kasir'}</span>
+            {loading ? (
+              <>
+                <Loader2 size={18} className="spin-animate" />
+                <span>Memverifikasi...</span>
+              </>
+            ) : (
+              <>
+                <LogIn size={18} />
+                <span>Masuk ke Aplikasi Kasir</span>
+              </>
+            )}
           </button>
         </form>
 

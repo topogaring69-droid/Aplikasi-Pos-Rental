@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import 'sweetalert2/dist/sweetalert2.min.css';
 
 :root {
   /* Palet Warna Friendly Light Mode */
@@ -395,6 +396,15 @@ select.form-control {
 }
 .btn-block {
   width: 100%;
+}
+
+.btn:disabled,
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 /* Search Bar */
@@ -856,3 +866,102 @@ select.form-control {
 .toast-success { background: #059669; }
 .toast-error { background: #e11d48; }
 .toast-info { background: #2563eb; }
+
+/* SweetAlert2 Modern Styling */
+.swal2-container {
+  z-index: 99999 !important;
+}
+
+.swal2-pos-modal {
+  border-radius: 24px !important;
+  padding: 24px 20px !important;
+  font-family: var(--font-sans) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  max-width: 440px !important;
+}
+
+.swal2-pos-title {
+  font-size: 19px !important;
+  font-weight: 800 !important;
+  color: var(--text-main) !important;
+  letter-spacing: -0.3px !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.swal2-pos-text {
+  font-size: 14px !important;
+  color: var(--text-muted) !important;
+  line-height: 1.6 !important;
+}
+
+.swal2-pos-btn {
+  border-radius: 12px !important;
+  padding: 10px 22px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  font-family: var(--font-sans) !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.swal2-pos-confirm:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+}
+
+.swal2-pos-cancel:hover {
+  background-color: #475569 !important;
+  transform: translateY(-1px);
+}
+
+.swal2-pos-toast {
+  border-radius: 16px !important;
+  padding: 12px 18px !important;
+  font-family: var(--font-sans) !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ==================== SKELETON LOADING ==================== */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    #e2e8f0 25%,
+    #f1f5f9 37%,
+    #e2e8f0 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ==================== SPIN ANIMATION ==================== */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-animate {
+  animation: spin 1s linear infinite;
+}

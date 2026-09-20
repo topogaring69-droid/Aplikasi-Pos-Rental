@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  PlusCircle, 
   Search, 
   Trash2, 
   Edit3, 
@@ -28,13 +27,13 @@ import {
   formatDateTime,
   getGdriveReceiptUrl
 } from '../../lib/storage';
-import Toast from '../../components/Toast';
+import { showToast, showConfirm } from '../../lib/sweetalert';
+import { SkeletonList } from '../../components/Skeleton';
 
 export default function PengeluaranPage() {
   const [expenses, setExpenses] = useState([]);
   const [fleet, setFleet] = useState([]);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState(null);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -53,6 +52,7 @@ export default function PengeluaranPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Modal Zoom Bukti Nota
   const [zoomPhoto, setZoomPhoto] = useState(null);
@@ -63,22 +63,21 @@ export default function PengeluaranPage() {
   }, []);
 
   const loadData = async () => {
-    const [expList, fleetList] = await Promise.all([
-      fetchExpenses(),
-      fetchFleet()
-    ]);
-    setExpenses(expList);
-    setFleet(fleetList);
+    try {
+      const [expList, fleetList] = await Promise.all([
+        fetchExpenses(),
+        fetchFleet()
+      ]);
+      setExpenses(expList);
+      setFleet(fleetList);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const resetDateNow = () => {
     const now = new Date();
     setDate(now.toISOString().slice(0, 16));
-  };
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
   };
 
   // Pilih foto nota (Hanya pratinjau lokal, upload dilakukan saat tombol Simpan ditekan)
@@ -130,7 +129,16 @@ export default function PengeluaranPage() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Yakin ingin menghapus catatan pengeluaran ini?')) {
+    const confirmed = await showConfirm({
+      title: 'Hapus Catatan Pengeluaran?',
+      text: 'Catatan pengeluaran ini akan dihapus dari pembukuan aktif.',
+      confirmButtonText: 'Ya, Hapus Pengeluaran',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+
+    if (confirmed) {
       await deleteExpense(id);
       await loadData();
       showToast('Pengeluaran berhasil dihapus', 'info');
@@ -223,11 +231,11 @@ export default function PengeluaranPage() {
 
   return (
     <div>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div style={{ marginBottom: '16px' }}>
         <button
           type="button"
+          disabled={isSubmitting}
           className="btn btn-primary btn-block"
           onClick={() => {
             if (showForm) {
@@ -238,8 +246,8 @@ export default function PengeluaranPage() {
           }}
           style={{ gap: '10px', fontSize: '15px' }}
         >
-          {showForm ? <X size={20} /> : <PlusCircle size={20} />}
-          <span>{showForm ? 'Tutup Formulir' : '+ Catat Pengeluaran Baru'}</span>
+          {showForm && <X size={20} />}
+          <span>{showForm ? 'Tutup Formulir' : 'Catat Pengeluaran Baru'}</span>
         </button>
       </div>
 
@@ -255,11 +263,11 @@ export default function PengeluaranPage() {
         >
           <div className="card-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
             <span className="card-title">
-              {editingId ? <Edit3 size={18} color="var(--accent-amber)" /> : <PlusCircle size={18} color="var(--primary)" />}
+              {editingId ? <Edit3 size={18} color="var(--accent-amber)" /> : <Calendar size={18} color="var(--primary)" />}
               {editingId ? 'Edit Catatan Pengeluaran' : 'Form Pengeluaran Baru'}
             </span>
             <span className={`badge ${editingId ? 'badge-warning' : 'badge-success'}`}>
-              {editingId ? 'Mode Edit' : 'SQLite Database'}
+              {editingId ? 'Mode Edit' : 'Database Aktif'}
             </span>
           </div>
 
@@ -278,7 +286,7 @@ export default function PengeluaranPage() {
             }}>
               <AlertCircle size={18} />
               <div>
-                Anda sedang mengubah catatan pengeluaran <strong>{editingId}</strong>. Klik <em>"Simpan Perubahan ke SQLite"</em> untuk memperbarui.
+                Anda sedang mengubah catatan pengeluaran <strong>{editingId}</strong>. Klik <em>"Simpan Perubahan"</em> untuk memperbarui.
               </div>
             </div>
           )}
@@ -469,7 +477,7 @@ export default function PengeluaranPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 size={18} className="spin-animate" />
-                    <span>Menyimpan & Mengunggah Nota...</span>
+                    <span>{editingId ? 'Menyimpan Perubahan...' : 'Menyimpan & Mengunggah Nota...'}</span>
                   </>
                 ) : (
                   <>
@@ -500,7 +508,7 @@ export default function PengeluaranPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--accent-rose)' }}>
-              Total Pengeluaran Tercatat (SQLite)
+              Total Pengeluaran Tercatat
             </div>
             <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--accent-rose)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
               {formatRupiah(totalExpenseFiltered)}
@@ -513,11 +521,13 @@ export default function PengeluaranPage() {
       </div>
 
       {/* Daftar Pengeluaran */}
-      {filteredExpenses.length === 0 ? (
+      {isLoading ? (
+        <SkeletonList count={3} variant="expense" />
+      ) : filteredExpenses.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-dim)' }}>
           <AlertCircle size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
           <p style={{ fontWeight: '600', fontSize: '14px' }}>Belum ada data pengeluaran</p>
-          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik tombol "+ Catat Pengeluaran Baru" untuk mencatat</p>
+          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik tombol "Catat Pengeluaran Baru" untuk mencatat</p>
         </div>
       ) : (
         filteredExpenses.map((exp) => (

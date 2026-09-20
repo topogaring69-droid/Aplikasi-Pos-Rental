@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Bike, 
-  PlusCircle, 
   Search, 
   Trash2, 
   Edit3, 
@@ -16,7 +15,8 @@ import {
   FileText,
   ChevronDown,
   Calendar,
-  ShieldAlert
+  ShieldAlert,
+  Loader2
 } from 'lucide-react';
 import { 
   fetchFleet, 
@@ -26,14 +26,16 @@ import {
   formatRupiah 
 } from '../../lib/storage';
 import { exportFleetToCSV, exportFleetToPrintable } from '../../lib/fleetExport';
-import Toast from '../../components/Toast';
+import { showToast, showConfirm } from '../../lib/sweetalert';
+import { SkeletonList } from '../../components/Skeleton';
 
 export default function ArmadaPage() {
   const [fleet, setFleet] = useState([]);
   const [settings, setSettings] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -53,14 +55,13 @@ export default function ArmadaPage() {
   }, []);
 
   const loadFleet = async () => {
-    const [list, sett] = await Promise.all([fetchFleet(), fetchSettings()]);
-    setFleet(list);
-    setSettings(sett);
-  };
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    try {
+      const [list, sett] = await Promise.all([fetchFleet(), fetchSettings()]);
+      setFleet(list);
+      setSettings(sett);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getTaxBadge = (dateStr, label = 'Tahunan') => {
@@ -136,7 +137,16 @@ export default function ArmadaPage() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Yakin ingin menghapus unit kendaraan ini?')) {
+    const confirmed = await showConfirm({
+      title: 'Hapus Unit Kendaraan?',
+      text: 'Data armada ini akan dihapus dari daftar aktif.',
+      confirmButtonText: 'Ya, Hapus Unit',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+
+    if (confirmed) {
       await deleteFleetItem(id);
       await loadFleet();
       showToast('Unit kendaraan berhasil dihapus', 'info');
@@ -161,24 +171,32 @@ export default function ArmadaPage() {
       return;
     }
 
-    const id = editingId || `MTR-${Date.now().toString().slice(-4)}`;
-    const motorData = {
-      id,
-      nopol: nopol.toUpperCase().trim(),
-      brand,
-      model: model.trim(),
-      color: color.trim(),
-      year: year.trim(),
-      dailyRate: Number(dailyRate),
-      status,
-      taxAnnualDate: taxAnnualDate || null,
-      taxFiveYearDate: taxFiveYearDate || null,
-    };
+    setIsSubmitting(true);
+    try {
+      const id = editingId || `MTR-${Date.now().toString().slice(-4)}`;
+      const motorData = {
+        id,
+        nopol: nopol.toUpperCase().trim(),
+        brand,
+        model: model.trim(),
+        color: color.trim(),
+        year: year.trim(),
+        dailyRate: Number(dailyRate),
+        status,
+        taxAnnualDate: taxAnnualDate || null,
+        taxFiveYearDate: taxFiveYearDate || null,
+      };
 
-    await saveFleetItem(motorData);
-    await loadFleet();
-    setShowForm(false);
-    showToast(editingId ? 'Data motor diperbarui di SQLite!' : 'Motor baru disimpan ke SQLite!');
+      await saveFleetItem(motorData);
+      await loadFleet();
+      setShowForm(false);
+      showToast(editingId ? 'Data motor diperbarui!' : 'Motor baru berhasil disimpan!');
+    } catch (err) {
+      console.error('Error saving fleet:', err);
+      showToast('Gagal menyimpan armada: ' + (err.message || 'Terjadi kesalahan'), 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredFleet = fleet.filter((m) => {
@@ -202,7 +220,6 @@ export default function ArmadaPage() {
 
   return (
     <div>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Banner Peringatan Pajak Jatuh Tempo */}
       {taxAlertCount > 0 && (
@@ -230,6 +247,7 @@ export default function ArmadaPage() {
         <button
           type="button"
           className="btn btn-primary"
+          disabled={isSubmitting}
           onClick={() => {
             if (showForm) {
               setShowForm(false);
@@ -239,8 +257,8 @@ export default function ArmadaPage() {
           }}
           style={{ flex: 2, gap: '8px', fontSize: '14px' }}
         >
-          {showForm ? <X size={18} /> : <PlusCircle size={18} />}
-          <span>{showForm ? 'Tutup Formulir' : '+ Tambah Motor Baru'}</span>
+          {showForm && <X size={18} />}
+          <span>{showForm ? 'Tutup Formulir' : 'Tambah Motor Baru'}</span>
         </button>
 
         <div style={{ position: 'relative', flex: 1 }}>
@@ -320,7 +338,7 @@ export default function ArmadaPage() {
               {editingId ? 'Edit Data Kendaraan' : 'Form Tambah Kendaraan Baru'}
             </span>
             <span className={`badge ${editingId ? 'badge-warning' : 'badge-success'}`}>
-              {editingId ? 'Mode Edit' : 'SQLite Database'}
+              {editingId ? 'Mode Edit' : 'Database Aktif'}
             </span>
           </div>
 
@@ -339,7 +357,7 @@ export default function ArmadaPage() {
             }}>
               <AlertCircle size={18} />
               <div>
-                Anda sedang mengubah data armada <strong>{nopol || editingId}</strong>. Klik <em>"Simpan Perubahan ke SQLite"</em> untuk memperbarui.
+                Anda sedang mengubah data armada <strong>{nopol || editingId}</strong>. Klik <em>"Simpan Perubahan"</em> untuk memperbarui.
               </div>
             </div>
           )}
@@ -479,6 +497,7 @@ export default function ArmadaPage() {
                 <button
                   type="button"
                   className="btn btn-outline"
+                  disabled={isSubmitting}
                   onClick={() => {
                     setEditingId(null);
                     setShowForm(false);
@@ -489,9 +508,23 @@ export default function ArmadaPage() {
                   <span>Batal Edit</span>
                 </button>
               )}
-              <button type="submit" className="btn btn-primary btn-block" style={{ flex: 2 }}>
-                <CheckCircle2 size={18} />
-                <span>{editingId ? 'Simpan Perubahan ke SQLite' : 'Simpan Kendaraan ke SQLite'}</span>
+              <button 
+                type="submit" 
+                className="btn btn-primary btn-block" 
+                disabled={isSubmitting}
+                style={{ flex: 2 }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="spin-animate" />
+                    <span>{editingId ? 'Menyimpan Perubahan...' : 'Menyimpan Kendaraan...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>{editingId ? 'Simpan Perubahan' : 'Simpan Kendaraan'}</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -527,7 +560,9 @@ export default function ArmadaPage() {
       </div>
 
       {/* List Armada */}
-      {filteredFleet.length === 0 ? (
+      {isLoading ? (
+        <SkeletonList count={3} variant="fleet" />
+      ) : filteredFleet.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-dim)' }}>
           Tidak ada data motor yang cocok.
         </div>

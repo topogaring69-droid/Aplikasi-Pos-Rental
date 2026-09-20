@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import { Readable } from 'node:stream';
-import { prisma } from './prisma';
+import { prisma } from './prisma.js';
 
 /**
  * Mengunggah berkas ke Google Drive menggunakan akun admin (OAuth 2.0)

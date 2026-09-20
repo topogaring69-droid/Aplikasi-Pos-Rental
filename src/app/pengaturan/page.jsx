@@ -28,11 +28,10 @@ import {
   exportAllData, 
   importAllData 
 } from '../../lib/storage';
-import Toast from '../../components/Toast';
+import { showToast, showConfirm } from '../../lib/sweetalert';
 
 export default function PengaturanPage() {
   const [settings, setSettings] = useState(null);
-  const [toast, setToast] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Form Profile & Keamanan
@@ -132,7 +131,15 @@ export default function PengaturanPage() {
   };
 
   const handleDisconnectGdrive = async () => {
-    if (!confirm('Putuskan koneksi Google Drive admin?')) return;
+    const confirmed = await showConfirm({
+      title: 'Putuskan Google Drive?',
+      text: 'Aplikasi kasir tidak dapat lagi mengunggah nota ke Google Drive secara otomatis sampai dihubungkan kembali.',
+      confirmButtonText: 'Ya, Putuskan',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+    if (!confirmed) return;
     setIsDisconnecting(true);
     try {
       const res = await fetch('/api/auth/google/status', {
@@ -170,11 +177,6 @@ export default function PengaturanPage() {
       setFooterNote(s.footerNote || '');
       setPaperSize(s.paperSize || '58mm');
     }
-  };
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
   };
 
   const handleLogoUpload = (e) => {
@@ -248,12 +250,11 @@ export default function PengaturanPage() {
 
   return (
     <div>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div style={{ marginBottom: '16px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Menu Akun & Pengaturan Struk</h2>
         <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-          Atur profil pengguna, keamanan PIN kasir, dan identitas struk thermal (Tersimpan di SQLite)
+          Atur profil pengguna, keamanan PIN kasir, dan identitas struk thermal (Tersimpan di Database)
         </p>
       </div>
 
@@ -265,7 +266,7 @@ export default function PengaturanPage() {
               <Receipt size={18} color="var(--primary)" />
               Pengaturan Struk Kasir
             </span>
-            <span className="badge badge-success">SQLite Database</span>
+            <span className="badge badge-success">Cloud Database</span>
           </div>
 
           <div className="form-group">
@@ -707,8 +708,8 @@ export default function PengaturanPage() {
             Cadangan & Pemulihan Data
           </span>
         </div>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
-          Simpan cadangan database SQLite ke file JSON atau pulihkan data dari perangkat lain.
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          Simpan cadangan database ke file JSON atau pulihkan data dari perangkat lain.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

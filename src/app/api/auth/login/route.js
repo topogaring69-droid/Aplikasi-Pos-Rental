@@ -43,7 +43,7 @@ export async function POST(request) {
       );
     }
 
-    // 3. Cari Pengguna di Database SQLite
+    // 3. Cari Pengguna di Database
     const user = await prisma.user.findUnique({
       where: { username },
     });

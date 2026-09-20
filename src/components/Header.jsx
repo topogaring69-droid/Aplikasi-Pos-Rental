@@ -29,9 +29,9 @@ export default function Header({ settings, user, onLock, onLogout }) {
       </div>
 
       <div className="header-actions">
-        <div className="badge badge-success" title="Mode Database SQLite Aktif" style={{ gap: '4px' }}>
+        <div className="badge badge-success" title="Mode Database Online Aktif" style={{ gap: '4px' }}>
           <Wifi size={12} />
-          <span>Prisma DB</span>
+          <span>Online DB</span>
         </div>
 
         {isPinEnabled && (

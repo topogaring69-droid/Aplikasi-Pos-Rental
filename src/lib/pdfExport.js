@@ -1,4 +1,5 @@
 import { formatRupiah, formatDateTime, formatDateOnly, getGdriveReceiptUrl } from './storage';
+import { showAlert } from './sweetalert';
 
 export function exportReportToPrintable(data) {
   const {
@@ -13,7 +14,11 @@ export function exportReportToPrintable(data) {
 
   const printWindow = window.open('', '_blank', 'width=900,height=750');
   if (!printWindow) {
-    alert('Harap izinkan pop-up pada browser untuk mencetak/menyimpan PDF laporan.');
+    showAlert({
+      title: 'Izin Pop-up Dibutuhkan',
+      text: 'Harap izinkan pop-up pada browser untuk mencetak atau menyimpan PDF laporan.',
+      icon: 'warning'
+    });
     return;
   }
 

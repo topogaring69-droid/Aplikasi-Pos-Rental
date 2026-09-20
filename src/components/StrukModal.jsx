@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { formatRupiah, formatDateTime } from '../lib/storage';
+import { showError } from '../lib/sweetalert';
 
 export default function StrukModal({ tx, settings, onClose }) {
   if (!tx || !settings) return null;
@@ -55,7 +56,7 @@ export default function StrukModal({ tx, settings, onClose }) {
       a.click();
     } catch (err) {
       console.error('Gagal membuat gambar:', err);
-      alert('Gagal menghasilkan berkas gambar.');
+      showError('Gagal', 'Gagal menghasilkan berkas gambar.');
     } finally {
       setIsGeneratingImg(false);
     }

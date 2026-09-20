@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  PlusCircle, 
   Search, 
   Trash2, 
   Edit3, 
@@ -15,19 +14,22 @@ import {
   Bike,
   ShieldCheck,
   RotateCcw,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { 
   fetchCustomers, 
   saveCustomer, 
   deleteCustomer 
 } from '../../lib/storage';
-import Toast from '../../components/Toast';
+import { showToast, showConfirm } from '../../lib/sweetalert';
+import { SkeletonList } from '../../components/Skeleton';
 
 export default function PelangganPage() {
   const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -45,13 +47,12 @@ export default function PelangganPage() {
   }, []);
 
   const loadData = async () => {
-    const data = await fetchCustomers();
-    setCustomers(data);
-  };
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    try {
+      const data = await fetchCustomers();
+      setCustomers(data);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOpenNew = () => {
@@ -79,7 +80,16 @@ export default function PelangganPage() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Yakin ingin menghapus data pelanggan ini?')) {
+    const confirmed = await showConfirm({
+      title: 'Hapus Data Pelanggan?',
+      text: 'Data pelanggan ini akan dihapus dari daftar aktif.',
+      confirmButtonText: 'Ya, Hapus Pelanggan',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+
+    if (confirmed) {
       await deleteCustomer(id);
       await loadData();
       showToast('Data pelanggan berhasil dihapus', 'info');
@@ -93,23 +103,31 @@ export default function PelangganPage() {
       return;
     }
 
-    const id = editingId || `CST-${Date.now().toString().slice(-4)}`;
-    const custData = {
-      id,
-      name: name.trim(),
-      phone: phone.trim(),
-      nik: nik.trim(),
-      address: address.trim(),
-      emergencyContact: emergencyContact.trim(),
-      notes: notes.trim(),
-      totalRentals: Number(totalRentals) || 0,
-      createdAt: new Date().toISOString()
-    };
+    setIsSubmitting(true);
+    try {
+      const id = editingId || `CST-${Date.now().toString().slice(-4)}`;
+      const custData = {
+        id,
+        name: name.trim(),
+        phone: phone.trim(),
+        nik: nik.trim(),
+        address: address.trim(),
+        emergencyContact: emergencyContact.trim(),
+        notes: notes.trim(),
+        totalRentals: Number(totalRentals) || 0,
+        createdAt: new Date().toISOString()
+      };
 
-    await saveCustomer(custData);
-    await loadData();
-    setShowForm(false);
-    showToast(editingId ? 'Data pelanggan diperbarui!' : 'Pelanggan baru berhasil ditambahkan!');
+      await saveCustomer(custData);
+      await loadData();
+      setShowForm(false);
+      showToast(editingId ? 'Data pelanggan diperbarui!' : 'Pelanggan baru berhasil ditambahkan!');
+    } catch (err) {
+      console.error('Error saving customer:', err);
+      showToast('Gagal menyimpan pelanggan: ' + (err.message || 'Terjadi kesalahan'), 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredCustomers = customers.filter((c) => {
@@ -123,13 +141,13 @@ export default function PelangganPage() {
 
   return (
     <div>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Header & Tombol Tambah */}
       <div style={{ marginBottom: '16px' }}>
         <button
           type="button"
           className="btn btn-primary btn-block"
+          disabled={isSubmitting}
           onClick={() => {
             if (showForm) {
               setShowForm(false);
@@ -139,8 +157,8 @@ export default function PelangganPage() {
           }}
           style={{ gap: '10px', fontSize: '15px' }}
         >
-          {showForm ? <X size={20} /> : <PlusCircle size={20} />}
-          <span>{showForm ? 'Tutup Formulir' : '+ Tambah Pelanggan Baru'}</span>
+          {showForm && <X size={20} />}
+          <span>{showForm ? 'Tutup Formulir' : 'Tambah Pelanggan Baru'}</span>
         </button>
       </div>
 
@@ -262,6 +280,7 @@ export default function PelangganPage() {
                 <button
                   type="button"
                   className="btn btn-outline"
+                  disabled={isSubmitting}
                   onClick={() => {
                     setEditingId(null);
                     setShowForm(false);
@@ -272,9 +291,23 @@ export default function PelangganPage() {
                   <span>Batal Edit</span>
                 </button>
               )}
-              <button type="submit" className="btn btn-primary btn-block" style={{ flex: 2 }}>
-                <CheckCircle2 size={18} />
-                <span>{editingId ? 'Simpan Perubahan Pelanggan' : 'Simpan Pelanggan ke Database'}</span>
+              <button 
+                type="submit" 
+                className="btn btn-primary btn-block" 
+                disabled={isSubmitting}
+                style={{ flex: 2 }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="spin-animate" />
+                    <span>{editingId ? 'Menyimpan Perubahan...' : 'Menyimpan Pelanggan...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>{editingId ? 'Simpan Perubahan Pelanggan' : 'Simpan Pelanggan ke Database'}</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -311,11 +344,13 @@ export default function PelangganPage() {
       </div>
 
       {/* Daftar Pelanggan */}
-      {filteredCustomers.length === 0 ? (
+      {isLoading ? (
+        <SkeletonList count={3} variant="customer" />
+      ) : filteredCustomers.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-dim)' }}>
           <Users size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
           <p style={{ fontWeight: '600', fontSize: '14px' }}>Belum ada data pelanggan</p>
-          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik tombol "+ Tambah Pelanggan Baru" untuk mendaftarkan</p>
+          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik tombol "Tambah Pelanggan Baru" untuk mendaftarkan</p>
         </div>
       ) : (
         filteredCustomers.map((cust) => (

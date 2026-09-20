@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  PlusCircle, 
   Search, 
   Printer, 
   Edit2, 
@@ -18,7 +17,8 @@ import {
   Users,
   Phone,
   RotateCcw,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { 
   fetchTransactions, 
@@ -33,7 +33,8 @@ import {
 } from '../lib/storage';
 import ModalDetail from '../components/ModalDetail';
 import StrukModal from '../components/StrukModal';
-import Toast from '../components/Toast';
+import { showToast, showConfirm } from '../lib/sweetalert';
+import { SkeletonList, SkeletonSearchBar } from '../components/Skeleton';
 
 // Helper format Date ke format input datetime-local: YYYY-MM-DDTHH:mm
 const formatToInput = (d) => {
@@ -47,6 +48,7 @@ export default function TransaksiPage() {
   const [fleet, setFleet] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   
   // State Form Transaksi (Mode Buat Baru vs Mode Edit)
@@ -75,7 +77,7 @@ export default function TransaksiPage() {
   // State Modal Detail & Struk
   const [selectedTx, setSelectedTx] = useState(null);
   const [strukTx, setStrukTx] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -93,21 +95,20 @@ export default function TransaksiPage() {
   };
 
   const loadData = async () => {
-    const [txList, fleetList, custList, sett] = await Promise.all([
-      fetchTransactions(),
-      fetchFleet(),
-      fetchCustomers(),
-      fetchSettings()
-    ]);
-    setTransactions(txList);
-    setFleet(fleetList);
-    setCustomers(custList);
-    setSettings(sett);
-  };
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    try {
+      const [txList, fleetList, custList, sett] = await Promise.all([
+        fetchTransactions(),
+        fetchFleet(),
+        fetchCustomers(),
+        fetchSettings()
+      ]);
+      setTransactions(txList);
+      setFleet(fleetList);
+      setCustomers(custList);
+      setSettings(sett);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Hitung otomatis harga sewa berdasarkan tarif armada (basis 24 jam & tarif per jam)
@@ -311,66 +312,73 @@ export default function TransaksiPage() {
       return;
     }
 
-    const isEdit = Boolean(editingTxId);
-    const txId = isEdit ? editingTxId : `TRX-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const calcDays = Math.max(1, Math.ceil(durationHours / 24));
+    setIsSubmitting(true);
+    try {
+      const isEdit = Boolean(editingTxId);
+      const txId = isEdit ? editingTxId : `TRX-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const calcDays = Math.max(1, Math.ceil(durationHours / 24));
 
-    // Simpan/update data pelanggan jika belum terdaftar
-    let finalCustId = selectedCustomerId;
-    if (!finalCustId && autoSaveCustomer) {
-      const existing = customers.find(
-        (c) => c.name.toLowerCase() === customerName.trim().toLowerCase()
-      );
-      if (existing) {
-        finalCustId = existing.id;
-      } else {
-        const newCust = {
-          id: `CST-${Date.now().toString().slice(-4)}`,
-          name: customerName.trim(),
-          phone: customerPhone.trim(),
-          nik: '',
-          address: '',
-          emergencyContact: '',
-          notes: 'Tersimpan otomatis dari transaksi sewa',
-          totalRentals: 1,
-          createdAt: new Date().toISOString()
-        };
-        await saveCustomer(newCust);
-        finalCustId = newCust.id;
+      // Simpan/update data pelanggan jika belum terdaftar
+      let finalCustId = selectedCustomerId;
+      if (!finalCustId && autoSaveCustomer) {
+        const existing = customers.find(
+          (c) => c.name.toLowerCase() === customerName.trim().toLowerCase()
+        );
+        if (existing) {
+          finalCustId = existing.id;
+        } else {
+          const newCust = {
+            id: `CST-${Date.now().toString().slice(-4)}`,
+            name: customerName.trim(),
+            phone: customerPhone.trim(),
+            nik: '',
+            address: '',
+            emergencyContact: '',
+            notes: 'Tersimpan otomatis dari transaksi sewa',
+            totalRentals: 1,
+            createdAt: new Date().toISOString()
+          };
+          await saveCustomer(newCust);
+          finalCustId = newCust.id;
+        }
       }
+
+      const payloadTx = {
+        id: txId,
+        nopol: nopol.toUpperCase().trim(),
+        customerId: finalCustId || null,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        startDate,
+        endDate,
+        durationDays: calcDays,
+        durationHours: durationHours,
+        rentalPrice: Number(rentalPrice),
+        extraCosts: extraCosts.filter((c) => c.label.trim() && Number(c.amount) > 0),
+        total: totalAmount,
+        paymentMethod,
+        amountPaid: amountPaid ? Number(amountPaid) : totalAmount,
+        changeAmount,
+        notes: notes.trim(),
+        ...(isEdit ? {} : { createdAt: new Date().toISOString() })
+      };
+
+      await saveTransaction(payloadTx);
+      await loadData();
+      setShowForm(false);
+      resetForm();
+
+      if (isEdit) {
+        showToast(`Transaksi ${txId} berhasil diperbarui di database!`);
+      } else {
+        showToast(`Transaksi ${txId} berhasil disimpan ke database!`);
+      }
+      setStrukTx(payloadTx);
+    } catch (error) {
+      showToast('Gagal menyimpan transaksi: ' + error.message, 'error');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const payloadTx = {
-      id: txId,
-      nopol: nopol.toUpperCase().trim(),
-      customerId: finalCustId || null,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
-      startDate,
-      endDate,
-      durationDays: calcDays,
-      durationHours: durationHours,
-      rentalPrice: Number(rentalPrice),
-      extraCosts: extraCosts.filter((c) => c.label.trim() && Number(c.amount) > 0),
-      total: totalAmount,
-      paymentMethod,
-      amountPaid: amountPaid ? Number(amountPaid) : totalAmount,
-      changeAmount,
-      notes: notes.trim(),
-      ...(isEdit ? {} : { createdAt: new Date().toISOString() })
-    };
-
-    await saveTransaction(payloadTx);
-    await loadData();
-    setShowForm(false);
-    resetForm();
-
-    if (isEdit) {
-      showToast(`Transaksi ${txId} berhasil diperbarui di database!`);
-    } else {
-      showToast(`Transaksi ${txId} berhasil disimpan ke SQLite!`);
-    }
-    setStrukTx(payloadTx);
   };
 
   // ================= FITUR HAPUS TRANSAKSI =================
@@ -378,7 +386,16 @@ export default function TransaksiPage() {
     const target = transactions.find((t) => t.id === id);
     const nopolTarget = target?.nopol || 'kendaraan';
     
-    if (confirm(`Apakah Anda yakin ingin menghapus transaksi "${id}"?\n\nUnit motor (${nopolTarget}) akan otomatis dikembalikan ke status "Tersedia".`)) {
+    const confirmed = await showConfirm({
+      title: `Hapus Transaksi ${id}?`,
+      text: `Unit motor (${nopolTarget}) akan otomatis dikembalikan ke status "Tersedia". Catatan transaksi akan diarsipkan.`,
+      confirmButtonText: 'Ya, Hapus Transaksi',
+      cancelButtonText: 'Batal',
+      icon: 'warning',
+      isDanger: true,
+    });
+
+    if (confirmed) {
       await deleteTransaction(id);
       await loadData();
       if (selectedTx?.id === id) {
@@ -400,13 +417,12 @@ export default function TransaksiPage() {
 
   return (
     <div>
-      {/* Toast Notification */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Tombol Buat Transaksi Baru */}
       <div style={{ marginBottom: '16px' }}>
         <button
           type="button"
+          disabled={isSubmitting}
           className={`btn ${editingTxId ? 'btn-outline' : 'btn-primary'} btn-block`}
           onClick={() => {
             if (editingTxId) {
@@ -417,13 +433,13 @@ export default function TransaksiPage() {
           }}
           style={{ gap: '10px', fontSize: '15px' }}
         >
-          {showForm ? <X size={20} /> : <PlusCircle size={20} />}
+          {showForm && <X size={20} />}
           <span>
             {editingTxId 
               ? 'Batal Edit (Kembali)' 
               : showForm 
                 ? 'Tutup Formulir' 
-                : '+ Buat Transaksi Sewa Baru'}
+                : 'Buat Transaksi Sewa Baru'}
           </span>
         </button>
       </div>
@@ -445,7 +461,7 @@ export default function TransaksiPage() {
               {editingTxId ? `Edit Transaksi: ${editingTxId}` : 'Formulir Transaksi Sewa Motor'}
             </span>
             <span className={`badge ${editingTxId ? 'badge-warning' : 'badge-success'}`}>
-              {editingTxId ? 'Mode Edit' : 'SQLite Database'}
+              {editingTxId ? 'Mode Edit' : 'Database Aktif'}
             </span>
           </div>
 
@@ -815,6 +831,7 @@ export default function TransaksiPage() {
                   type="button" 
                   className="btn btn-outline" 
                   onClick={handleCancelEdit}
+                  disabled={isSubmitting}
                   style={{ flex: 1 }}
                 >
                   <RotateCcw size={16} />
@@ -824,14 +841,24 @@ export default function TransaksiPage() {
               <button 
                 type="submit" 
                 className="btn btn-primary btn-block" 
-                style={{ flex: 2, fontSize: '15px' }}
+                disabled={isSubmitting}
+                style={{ flex: 2, fontSize: '15px', opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
               >
-                <CheckCircle2 size={18} />
-                <span>
-                  {editingTxId 
-                    ? 'Simpan Perubahan Transaksi' 
-                    : 'Simpan ke SQLite & Cetak Struk'}
-                </span>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="spin-animate" />
+                    <span>{editingTxId ? 'Menyimpan Perubahan...' : 'Menyimpan Transaksi...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>
+                      {editingTxId 
+                        ? 'Simpan Perubahan Transaksi' 
+                        : 'Simpan Transaksi & Cetak Struk'}
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -853,15 +880,17 @@ export default function TransaksiPage() {
       {/* Riwayat Transaksi */}
       <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)' }}>
-          RIWAYAT TRANSAKSI ({filteredTransactions.length})
+          RIWAYAT TRANSAKSI {!isLoading && `(${filteredTransactions.length})`}
         </span>
       </div>
 
-      {filteredTransactions.length === 0 ? (
+      {isLoading ? (
+        <SkeletonList count={3} variant="transaction" />
+      ) : filteredTransactions.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-dim)' }}>
           <Bike size={42} strokeWidth={1.5} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
           <p style={{ fontWeight: '600', fontSize: '14px' }}>Belum ada transaksi sewa</p>
-          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik "+ Buat Transaksi Sewa Baru" untuk memulai</p>
+          <p style={{ fontSize: '12px', marginTop: '4px' }}>Klik "Buat Transaksi Sewa Baru" untuk memulai</p>
         </div>
       ) : (
         filteredTransactions.map((tx) => {
