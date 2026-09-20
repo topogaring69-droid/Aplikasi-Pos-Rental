@@ -331,13 +331,17 @@ export default function PengeluaranPage() {
                 <SearchableSelect
                   options={fleet}
                   value={nopol}
-                  onChange={(val) => setNopol(val ? val.toUpperCase() : '')}
+                  valueKey="nopol"
                   displayKey="nopol"
                   secondaryKey="model"
                   placeholder="Cari nopol atau ketik nopol baru..."
                   searchPlaceholder="Ketik nopol / merk / tipe..."
                   allowCustom={true}
                   customLabel="Gunakan nopol baru"
+                  onChange={(val, item) => {
+                    const plate = (item?.nopol || val || '').toUpperCase().trim();
+                    setNopol(plate);
+                  }}
                 />
               </div>
             )}

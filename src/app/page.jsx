@@ -121,24 +121,68 @@ export default function TransaksiPage() {
     }
   };
 
+  // Data armada yang cocok dengan nopol yang sedang diisi
+  const selectedFleetItem = React.useMemo(() => {
+    if (!nopol) return null;
+    const clean = nopol.trim().toLowerCase().replace(/\s+/g, '');
+    return fleet.find((f) => {
+      const fn = String(f.nopol || '').trim().toLowerCase().replace(/\s+/g, '');
+      const fid = String(f.id || '').trim().toLowerCase();
+      return fn === clean || fid === clean;
+    }) || null;
+  }, [fleet, nopol]);
+
+  // Muat ulang daftar armada jika formulir sewa baru dibuka
+  useEffect(() => {
+    if (showForm) {
+      fetchFleet().then((f) => {
+        if (Array.isArray(f) && f.length > 0) setFleet(f);
+      }).catch(() => {});
+    }
+  }, [showForm]);
+
   // Hitung otomatis harga sewa berdasarkan tarif armada (basis 24 jam & tarif per jam)
-  const calculateRentalPrice = (targetNopol, hours) => {
-    const found = fleet.find((f) => f.nopol === targetNopol);
-    if (!found || !found.dailyRate) return;
-    const rate = found.dailyRate;
-    const fullDays = Math.floor(hours / 24);
-    const remHours = hours % 24;
+  const calculateRentalPrice = (target, hours = durationHours) => {
+    let rate = 0;
+    let unitLabel = '';
+
+    if (typeof target === 'number') {
+      rate = target;
+    } else if (target && typeof target === 'object') {
+      rate = Number(target.dailyRate) || 0;
+      unitLabel = `${target.nopol} (${target.brand || ''} ${target.model || ''})`.trim();
+    } else if (typeof target === 'string') {
+      const q = target.trim().toLowerCase();
+      const cleanQ = q.replace(/\s+/g, '');
+      const found = fleet.find((f) => {
+        const fn = String(f.nopol || '').trim().toLowerCase();
+        const fid = String(f.id || '').trim().toLowerCase();
+        return fn === q || fn.replace(/\s+/g, '') === cleanQ || fid === q;
+      });
+      if (found && found.dailyRate) {
+        rate = Number(found.dailyRate);
+        unitLabel = `${found.nopol} (${found.brand || ''} ${found.model || ''})`.trim();
+      }
+    }
+
+    if (!rate || isNaN(rate)) return null;
+
+    const h = Number(hours) || 24;
+    const fullDays = Math.floor(h / 24);
+    const remHours = h % 24;
     const ratePerHour = Math.round(rate / 24);
 
     let price = 0;
-    if (hours < 24) {
+    if (h < 24) {
       // Standar rental: minimal sewa 1 hari (24 jam)
       price = rate;
     } else {
       // 24 jam x N hari + kelebihan jam (overtime)
       price = (fullDays * rate) + (remHours * ratePerHour);
     }
+
     setRentalPrice(price);
+    return { price, rate, unitLabel };
   };
 
   // Pilih motor dari armada: otomatis isi nopol & estimasi tarif harian/perjam
@@ -530,26 +574,60 @@ export default function TransaksiPage() {
               <SearchableSelect
                 options={fleet}
                 value={nopol}
-                onChange={(val) => {
-                  const upper = (val || '').toUpperCase().trim();
-                  setNopol(upper);
-                  if (upper) {
-                    calculateRentalPrice(upper, durationHours);
-                  }
-                }}
+                valueKey="nopol"
                 displayKey="nopol"
                 secondaryKey="model"
                 badgeKey="status"
                 badgeRenderer={(item) => (
                   <span className={`badge ${item.status === 'available' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
-                    {item.status === 'available' ? 'Tersedia' : item.status}
+                    {item.status === 'available' ? 'Tersedia' : item.status} • {formatRupiah(item.dailyRate)}/hari
                   </span>
                 )}
-                placeholder="Cari nopol, model, atau ketik langsung..."
-                searchPlaceholder="Ketik nopol / merk / tipe..."
+                placeholder="Pilih atau cari motor armada (nopol, merk, tipe)..."
+                searchPlaceholder="Ketik nopol (B 1234 XYZ) atau nama motor..."
                 allowCustom={true}
                 customLabel="Gunakan nopol baru"
+                onChange={(val, item) => {
+                  const plate = (item?.nopol || val || '').toUpperCase().trim();
+                  setNopol(plate);
+                  if (item && item.dailyRate) {
+                    const res = calculateRentalPrice(item, durationHours);
+                    if (res) {
+                      showToast(`Motor ${item.nopol} (${item.brand} ${item.model}) dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.price)}`);
+                    }
+                  } else if (plate) {
+                    const res = calculateRentalPrice(plate, durationHours);
+                    if (res) {
+                      showToast(`Motor ${plate} dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.price)}`);
+                    }
+                  }
+                }}
               />
+
+              {/* Rincian Motor Terpilih */}
+              {selectedFleetItem && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '8px 12px',
+                  background: 'rgba(5, 150, 105, 0.07)',
+                  border: '1px solid rgba(5, 150, 105, 0.25)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Bike size={15} color="var(--primary)" />
+                    <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>
+                      {selectedFleetItem.brand} {selectedFleetItem.model} {selectedFleetItem.color ? `(${selectedFleetItem.color})` : ''}
+                    </span>
+                  </div>
+                  <div style={{ color: 'var(--primary)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>
+                    {formatRupiah(selectedFleetItem.dailyRate)} / 24 Jam
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 2. Integrasi Manajemen Pelanggan (Auto-fill) */}
@@ -757,8 +835,8 @@ export default function TransaksiPage() {
             <div className="form-group">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>Biaya Sewa Pokok (Rp) *</label>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {durationHours} Jam (Tarif dasar: {formatRupiah(rentalPrice)})
+                <span style={{ fontSize: '11px', color: selectedFleetItem ? 'var(--primary)' : 'var(--text-muted)', fontWeight: selectedFleetItem ? '700' : '400' }}>
+                  {durationHours} Jam {selectedFleetItem ? `(Tarif: ${formatRupiah(selectedFleetItem.dailyRate)}/24 Jam)` : `(Tarif: ${formatRupiah(rentalPrice)})`}
                 </span>
               </div>
               <input

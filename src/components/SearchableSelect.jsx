@@ -11,6 +11,7 @@ import { Search, ChevronDown, X, Check, Plus } from 'lucide-react';
 export default function SearchableSelect({
   options = [],
   value = '',
+  valueKey,
   onChange,
   placeholder = 'Pilih atau ketik nama...',
   searchPlaceholder = 'Ketik untuk mencari...',
@@ -30,13 +31,32 @@ export default function SearchableSelect({
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Helper mendapatkan value dari sebuah item opsi
+  const getItemValue = (item) => {
+    if (!item) return '';
+    if (valueKey && item[valueKey] !== undefined) return item[valueKey];
+    if (item.id !== undefined && !valueKey) return item.id;
+    return item[displayKey] ?? '';
+  };
+
   // Cari item yang sedang terpilih
   const selectedItem = useMemo(() => {
     if (!value) return null;
-    return options.find(
-      (opt) => (opt.id != null && opt.id === value) || (opt[displayKey] != null && opt[displayKey] === value)
-    ) || null;
-  }, [options, value, displayKey]);
+    const vStr = String(value).trim().toLowerCase();
+    const cleanVStr = vStr.replace(/\s+/g, '');
+    return options.find((opt) => {
+      const valStr = String(getItemValue(opt)).trim().toLowerCase();
+      const dispStr = String(opt[displayKey] || '').trim().toLowerCase();
+      const idStr = opt.id != null ? String(opt.id).trim().toLowerCase() : '';
+      return (
+        valStr === vStr ||
+        valStr.replace(/\s+/g, '') === cleanVStr ||
+        dispStr === vStr ||
+        dispStr.replace(/\s+/g, '') === cleanVStr ||
+        idStr === vStr
+      );
+    }) || null;
+  }, [options, value, displayKey, valueKey]);
 
   // Label yang ditampilkan di tombol pemicu dropdown
   const displayLabel = useMemo(() => {
@@ -50,14 +70,25 @@ export default function SearchableSelect({
     return '';
   }, [selectedItem, value, displayKey, secondaryKey]);
 
-  // Filter opsi berdasarkan teks pencarian
+  // Filter opsi berdasarkan teks pencarian (mencari nopol, merk, tipe, nama, no hp)
   const filteredOptions = useMemo(() => {
     if (!query.trim()) return options;
     const q = query.toLowerCase().trim();
+    const cleanQ = q.replace(/\s+/g, '');
     return options.filter((opt) => {
       const mainText = String(opt[displayKey] || '').toLowerCase();
       const secText = secondaryKey ? String(opt[secondaryKey] || '').toLowerCase() : '';
-      return mainText.includes(q) || secText.includes(q);
+      const brandText = opt.brand ? String(opt.brand).toLowerCase() : '';
+      const modelText = opt.model ? String(opt.model).toLowerCase() : '';
+      const phoneText = opt.phone ? String(opt.phone).toLowerCase() : '';
+      return (
+        mainText.includes(q) ||
+        mainText.replace(/\s+/g, '').includes(cleanQ) ||
+        secText.includes(q) ||
+        brandText.includes(q) ||
+        modelText.includes(q) ||
+        phoneText.includes(q)
+      );
     });
   }, [options, query, displayKey, secondaryKey]);
 
@@ -101,7 +132,7 @@ export default function SearchableSelect({
   }, [isOpen]);
 
   const handleSelectItem = (item) => {
-    const val = item.id != null ? item.id : item[displayKey];
+    const val = getItemValue(item);
     if (onChange) onChange(val, item);
     setIsOpen(false);
     setQuery('');
