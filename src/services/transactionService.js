@@ -131,11 +131,16 @@ export const transactionService = {
       },
     });
 
-    // 2. Perbarui status armada menjadi 'rented' jika status sewa aktif
-    if (nopol && status === 'active') {
+    // 2. Perbarui status armada sesuai status sewa
+    if (nopol && (status === 'active' || status === 'aktif')) {
       await prisma.fleet.updateMany({
         where: { nopol, deletedAt: null },
         data: { status: 'rented' },
+      });
+    } else if (nopol && (status === 'selesai' || status === 'booking')) {
+      await prisma.fleet.updateMany({
+        where: { nopol, deletedAt: null },
+        data: { status: 'available' },
       });
     }
 
@@ -237,12 +242,12 @@ export const transactionService = {
     // Sinkronisasi status armada
     const activeNopol = (tx.nopol || oldTx.nopol || '').toUpperCase();
     if (activeNopol) {
-      if (nextStatus === 'selesai') {
+      if (nextStatus === 'selesai' || nextStatus === 'booking') {
         await prisma.fleet.updateMany({
           where: { nopol: activeNopol, deletedAt: null },
           data: { status: 'available' },
         });
-      } else if (nextStatus === 'active') {
+      } else if (nextStatus === 'active' || nextStatus === 'aktif') {
         await prisma.fleet.updateMany({
           where: { nopol: activeNopol, deletedAt: null },
           data: { status: 'rented' },

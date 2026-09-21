@@ -606,24 +606,90 @@ export default function TransaksiPage() {
           )}
 
           <form onSubmit={handleSaveTransaction}>
-            {/* Pilihan Jenis Sewa: Langsung atau Booking */}
-            <div style={{ marginBottom: '14px', background: 'var(--bg-input)', padding: '6px', borderRadius: '12px', display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setTxStatus('active')}
-                className={`tab-btn ${txStatus === 'active' ? 'active' : ''}`}
-                style={{ flex: 1, minHeight: '36px', fontSize: '12px', padding: '6px' }}
-              >
-                Sewa Langsung (Aktif)
-              </button>
-              <button
-                type="button"
-                onClick={() => setTxStatus('booking')}
-                className={`tab-btn ${txStatus === 'booking' ? 'active' : ''}`}
-                style={{ flex: 1, minHeight: '36px', fontSize: '12px', padding: '6px' }}
-              >
-                Booking (Mulai Nanti)
-              </button>
+            {/* Pilihan Status Transaksi: Booking, Aktif, Selesai */}
+            <div style={{ marginBottom: '16px' }}>
+              <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                Status Transaksi (Sewa)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setTxStatus('booking')}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: txStatus === 'booking' ? '2px solid #d97706' : '1px solid var(--border)',
+                    backgroundColor: txStatus === 'booking' ? 'rgba(217, 119, 6, 0.12)' : '#ffffff',
+                    color: txStatus === 'booking' ? '#d97706' : 'var(--text-main)',
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '2px'
+                  }}
+                >
+                  <span>🟡 Booking</span>
+                  <span style={{ fontSize: '10px', fontWeight: 500, color: txStatus === 'booking' ? '#b45309' : 'var(--text-muted)' }}>
+                    Mulai Nanti
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTxStatus('active')}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: txStatus === 'active' ? '2px solid #16a34a' : '1px solid var(--border)',
+                    backgroundColor: txStatus === 'active' ? 'rgba(22, 163, 74, 0.12)' : '#ffffff',
+                    color: txStatus === 'active' ? '#16a34a' : 'var(--text-main)',
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '2px'
+                  }}
+                >
+                  <span>🟢 Aktif</span>
+                  <span style={{ fontSize: '10px', fontWeight: 500, color: txStatus === 'active' ? '#15803d' : 'var(--text-muted)' }}>
+                    Sedang Disewa
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTxStatus('selesai')}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: txStatus === 'selesai' ? '2px solid #64748b' : '1px solid var(--border)',
+                    backgroundColor: txStatus === 'selesai' ? 'rgba(100, 116, 139, 0.12)' : '#ffffff',
+                    color: txStatus === 'selesai' ? '#475569' : 'var(--text-main)',
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '2px'
+                  }}
+                >
+                  <span>⚪ Selesai</span>
+                  <span style={{ fontSize: '10px', fontWeight: 500, color: txStatus === 'selesai' ? '#334155' : 'var(--text-muted)' }}>
+                    Sudah Kembali
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* 1. Referensi Unit Kendaraan */}
