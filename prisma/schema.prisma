@@ -87,6 +87,7 @@ model Transaction {
   durationHours Int?      @default(24) @map("duration_hours")
   rentalPrice   Int       @map("rental_price")
   extraCosts    String?   @default("[]") @map("extra_costs")
+  discount      Int       @default(0) @map("discount")
   total         Int
   paymentMethod String    @default("Tunai") @map("payment_method")
   amountPaid    Int       @map("amount_paid")

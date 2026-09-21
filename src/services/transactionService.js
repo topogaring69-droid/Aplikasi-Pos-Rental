@@ -30,6 +30,7 @@ export const transactionService = {
       const paymentStatus = t.paymentStatus || determinePaymentStatus(amountPaid, total);
       return {
         ...t,
+        discount: Number(t.discount || 0),
         amountPaid,
         paymentStatus,
         durationHours: t.durationHours || (t.durationDays || 1) * 24,
@@ -55,6 +56,7 @@ export const transactionService = {
 
     return {
       ...t,
+      discount: Number(t.discount || 0),
       amountPaid,
       paymentStatus,
       durationHours: t.durationHours || (t.durationDays || 1) * 24,
@@ -78,7 +80,8 @@ export const transactionService = {
     const startDate = tx.startDate || new Date().toISOString();
     const endDate = tx.endDate || new Date(Date.now() + durationDays * 86400000).toISOString();
     const rentalPrice = Number(tx.rentalPrice != null ? tx.rentalPrice : (tx.pricePerDay != null ? tx.pricePerDay : 0));
-    const total = Number(tx.total != null ? tx.total : (rentalPrice * durationDays));
+    const discount = Number(tx.discount || 0);
+    const total = Number(tx.total != null ? tx.total : Math.max(0, rentalPrice * durationDays - discount));
 
     const status = tx.status || 'active';
     const amountPaid = Number(tx.amountPaid != null ? tx.amountPaid : total);
@@ -98,6 +101,7 @@ export const transactionService = {
         durationHours,
         rentalPrice,
         extraCosts: JSON.stringify(tx.extraCosts || []),
+        discount,
         total,
         paymentMethod: tx.paymentMethod || 'Tunai',
         amountPaid,
@@ -119,6 +123,7 @@ export const transactionService = {
         durationHours,
         rentalPrice,
         extraCosts: JSON.stringify(tx.extraCosts || []),
+        discount,
         total,
         paymentMethod: tx.paymentMethod || 'Tunai',
         amountPaid,
@@ -229,6 +234,7 @@ export const transactionService = {
         durationHours: durationHours,
         rentalPrice: tx.rentalPrice != null ? Number(tx.rentalPrice) : oldTx.rentalPrice,
         extraCosts: tx.extraCosts ? JSON.stringify(tx.extraCosts) : oldTx.extraCosts,
+        discount: tx.discount != null ? Number(tx.discount) : (oldTx.discount || 0),
         total: newTotal,
         paymentMethod: tx.paymentMethod || oldTx.paymentMethod,
         amountPaid: newAmountPaid,
@@ -259,6 +265,7 @@ export const transactionService = {
       ...updated,
       durationHours,
       extraCosts: tx.extraCosts || (oldTx.extraCosts ? JSON.parse(oldTx.extraCosts) : []),
+      discount: Number(updated.discount || 0),
       createdAt: updated.createdAt.toISOString(),
     };
   },

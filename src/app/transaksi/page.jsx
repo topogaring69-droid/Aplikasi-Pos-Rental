@@ -615,7 +615,14 @@ export default function TransaksiPage() {
                   </div>
 
                   {/* Rincian Finansial & Pembayaran */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '2px' }}>
+                  {Number(tx.discount || 0) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--accent-rose)', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '2px' }}>
+                      <span>Potongan Diskon:</span>
+                      <span style={{ fontWeight: 600 }}>- {formatRupiah(tx.discount)}</span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: Number(tx.discount || 0) > 0 ? 'none' : '1px dashed var(--border)', paddingTop: Number(tx.discount || 0) > 0 ? '2px' : '6px', marginTop: '2px' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Total Biaya:</span>
                     <strong style={{ color: 'var(--text-main)', fontSize: '13px' }}>{formatRupiah(tx.total)}</strong>
                   </div>

@@ -81,6 +81,13 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete, on
               </div>
             ))}
 
+            {Number(tx.discount || 0) > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: '13px', color: 'var(--accent-rose)' }}>
+                <span>- Diskon Potongan Harga</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>- {formatRupiah(tx.discount)}</span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 6px', fontSize: '16px', fontWeight: '800' }}>
               <span>Total Keseluruhan</span>
               <span style={{ color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>{formatRupiah(tx.total)}</span>

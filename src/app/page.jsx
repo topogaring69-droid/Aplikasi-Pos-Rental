@@ -88,6 +88,7 @@ export default function TransaksiPage() {
   const [extraCosts, setExtraCosts] = useState([
     { id: '1', label: 'Helm Tambahan', amount: 0 }
   ]);
+  const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('Tunai');
   const [paymentStatusOption, setPaymentStatusOption] = useState('lunas'); // 'lunas', 'sebagian', 'terhutang'
   const [amountPaid, setAmountPaid] = useState('');
@@ -343,12 +344,22 @@ export default function TransaksiPage() {
     (sum, item) => sum + (Number(item.amount) || 0),
     0
   );
-  const totalAmount = Number(rentalPrice || 0) + totalExtras;
+  const subtotal = Number(rentalPrice || 0) + totalExtras;
+  const totalAmount = Math.max(0, subtotal - Number(discount || 0));
   const currentNumPaid = amountPaid !== '' 
     ? Number(amountPaid) 
     : (paymentStatusOption === 'terhutang' ? 0 : totalAmount);
   const changeAmount = Math.max(0, currentNumPaid - totalAmount);
   const remainingDebt = Math.max(0, totalAmount - currentNumPaid);
+
+  const handleDiscountChange = (val) => {
+    const num = Math.max(0, Number(val) || 0);
+    setDiscount(num);
+    const newTotal = Math.max(0, subtotal - num);
+    if (paymentStatusOption === 'lunas' && amountPaid !== '') {
+      setAmountPaid(String(newTotal));
+    }
+  };
 
   // ================= FITUR EDIT TRANSAKSI =================
   const handleStartEdit = (tx) => {
@@ -381,6 +392,7 @@ export default function TransaksiPage() {
       ? tx.extraCosts 
       : [{ id: '1', label: 'Helm Tambahan', amount: 0 }];
     setExtraCosts(extras);
+    setDiscount(Number(tx.discount || 0));
 
     setPaymentMethod(tx.paymentMethod || 'Tunai');
     setAmountPaid(tx.amountPaid != null ? String(tx.amountPaid) : String(tx.total || ''));
@@ -410,6 +422,7 @@ export default function TransaksiPage() {
     initDefaultDates();
     setRentalPrice(100000);
     setExtraCosts([{ id: '1', label: 'Helm Tambahan', amount: 0 }]);
+    setDiscount(0);
     setPaymentMethod('Tunai');
     setPaymentStatusOption('lunas');
     setAmountPaid('');
@@ -473,6 +486,7 @@ export default function TransaksiPage() {
         durationHours: (durationDays * 24) + extendHours,
         rentalPrice: Number(rentalPrice),
         extraCosts: extraCosts.filter((c) => c.label.trim() && Number(c.amount) > 0),
+        discount: Number(discount || 0),
         total: totalAmount,
         paymentMethod,
         amountPaid: currentNumPaid,
@@ -1063,6 +1077,78 @@ export default function TransaksiPage() {
 
             {/* 6. Total & Pembayaran */}
             <div style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border)' }}>
+              
+              {/* Diskon Nominal */}
+              <div style={{ marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px dashed var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label className="form-label" style={{ marginBottom: 0, fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    🏷️ Diskon Nominal (Potongan Harga)
+                  </label>
+                  {discount > 0 && (
+                    <span style={{ fontSize: '12px', color: 'var(--accent-rose)', fontWeight: 800 }}>
+                      - {formatRupiah(discount)}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                      Rp
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      className="form-control"
+                      placeholder="0"
+                      value={discount || ''}
+                      onChange={(e) => handleDiscountChange(e.target.value)}
+                      inputMode="numeric"
+                      style={{ paddingLeft: '36px', fontWeight: '700' }}
+                    />
+                  </div>
+                  {discount > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleDiscountChange(0)}
+                      style={{ fontSize: '11px', padding: '7px 12px', color: 'var(--accent-rose)', borderColor: 'rgba(244, 63, 94, 0.4)' }}
+                    >
+                      Reset Diskon
+                    </button>
+                  )}
+                </div>
+
+                {/* Preset Chip Diskon */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[0, 10000, 20000, 25000, 50000, 100000].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`btn btn-sm ${discount === val ? 'btn-primary' : 'btn-outline'}`}
+                      onClick={() => handleDiscountChange(val)}
+                      style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '6px' }}
+                    >
+                      {val === 0 ? 'Rp 0 (Tanpa Diskon)' : formatRupiah(val)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rincian Subtotal & Diskon jika ada */}
+              {discount > 0 && (
+                <div style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span>Subtotal Sewa:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>{formatRupiah(subtotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-rose)', fontWeight: 600 }}>
+                    <span>Potongan Diskon:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>- {formatRupiah(discount)}</span>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '17px', fontWeight: '800', marginBottom: '12px' }}>
                 <span>Total Biaya:</span>
                 <span style={{ color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>{formatRupiah(totalAmount)}</span>

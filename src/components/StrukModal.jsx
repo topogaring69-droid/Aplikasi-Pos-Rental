@@ -88,7 +88,7 @@ Terima kasih telah mempercayai layanan *SHELBY RENT*.
 *Selesai Sewa:* ${formatDateTime(tx.endDate)}
 *Durasi:* ${formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours)}
 *Sewa Pokok:* ${formatRupiah(tx.rentalPrice)}
-${extraTotal > 0 ? `*Biaya Tambahan:* ${formatRupiah(extraTotal)}\n` : ''}*TOTAL BAYAR:* *${formatRupiah(tx.total)}* (${tx.paymentMethod || 'Lunas'})
+${extraTotal > 0 ? `*Biaya Tambahan:* ${formatRupiah(extraTotal)}\n` : ''}${Number(tx.discount || 0) > 0 ? `*Potongan Diskon:* -${formatRupiah(tx.discount)}\n` : ''}*TOTAL BAYAR:* *${formatRupiah(tx.total)}* (${tx.paymentMethod || 'Lunas'})
 
 *Catatan:* ${settings.footerNote?.split('\n')[0] || 'Helm wajib SNI & BBM kembali sesuai awal.'}
 
@@ -256,6 +256,13 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                   </div>
                 ))}
 
+                {Number(tx.discount || 0) > 0 && (
+                  <div className="receipt-row" style={{ color: '#b91c1c' }}>
+                    <span>- Diskon Potongan:</span>
+                    <span>-{formatRupiah(tx.discount)}</span>
+                  </div>
+                )}
+
                 <div className="receipt-divider" />
 
                 <div className="receipt-row receipt-total">
@@ -390,6 +397,12 @@ _SHELBY RENT - Rental Motor Cepat & Terpercaya_`;
                   <div className="invoice-totals-row">
                     <span>Biaya Tambahan:</span>
                     <span>{formatRupiah(extraTotal)}</span>
+                  </div>
+                )}
+                {Number(tx.discount || 0) > 0 && (
+                  <div className="invoice-totals-row" style={{ color: '#b91c1c' }}>
+                    <span>Potongan Diskon:</span>
+                    <span>- {formatRupiah(tx.discount)}</span>
                   </div>
                 )}
                 <div className="invoice-totals-row" style={{ borderTop: '2px solid #0f172a', borderBottom: '2px solid #0f172a', padding: '6px 0', marginTop: '6px', fontWeight: '800', fontSize: '15px' }}>

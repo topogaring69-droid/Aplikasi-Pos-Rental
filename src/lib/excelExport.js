@@ -122,6 +122,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     'Durasi',
     'Tarif Pokok (Rp)',
     'Biaya Tambahan (Rp)',
+    'Diskon (Rp)',
     'Total Tagihan (Rp)',
     'Dibayar (Rp)',
     'Sisa Tagihan (Rp)',
@@ -140,6 +141,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
   });
 
   let grandTotal = 0;
+  let grandTotalDiscount = 0;
   let grandTotalPaid = 0;
   let grandTotalRemaining = 0;
 
@@ -151,9 +153,11 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     const extraTotal = Array.isArray(tx.extraCosts)
       ? tx.extraCosts.reduce((a, b) => a + (Number(b.amount) || 0), 0)
       : 0;
+    const discountAmount = Number(tx.discount || 0);
 
     const paySt = getPaymentStatus(tx);
     grandTotal += Number(tx.total) || 0;
+    grandTotalDiscount += discountAmount;
     grandTotalPaid += paySt.paid;
     grandTotalRemaining += paySt.remaining;
 
@@ -204,6 +208,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       formatRentalDuration(tx.durationDays, tx.extendHours, tx.durationHours),
       Number(tx.rentalPrice) || 0,
       extraTotal,
+      discountAmount,
       Number(tx.total) || 0,
       paySt.paid,
       paySt.remaining,
@@ -224,22 +229,22 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
       }
 
       // Format mata uang & alignment kolom
-      if (colNum === 1 || colNum === 5 || colNum === 9 || colNum === 15) {
+      if (colNum === 1 || colNum === 5 || colNum === 9 || colNum === 16) {
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      } else if (colNum >= 10 && colNum <= 14) {
+      } else if (colNum >= 10 && colNum <= 15) {
         cell.alignment = { vertical: 'middle', horizontal: 'right' };
         cell.numFmt = '#,##0';
       }
 
       // Highlight status sewa
-      if (colNum === 16) {
+      if (colNum === 17) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: stBg } };
         cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: stTxt } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       }
 
       // Highlight status pembayaran
-      if (colNum === 17) {
+      if (colNum === 18) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: payBg } };
         cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: payTxt } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -260,6 +265,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     '',
     '',
     '',
+    grandTotalDiscount,
     grandTotal,
     grandTotalPaid,
     grandTotalRemaining,
@@ -273,7 +279,7 @@ export async function exportTransactionsToExcel(transactions = [], fleet = [], s
     cell.font = { name: 'Calibri', size: 11, bold: true };
     cell.border = BORDER_TOTAL;
     cell.alignment = { vertical: 'middle' };
-    if (colNum >= 12 && colNum <= 14) {
+    if (colNum >= 10 && colNum <= 15) {
       cell.alignment = { vertical: 'middle', horizontal: 'right' };
       cell.numFmt = '#,##0';
     }
