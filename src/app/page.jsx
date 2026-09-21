@@ -73,6 +73,7 @@ export default function TransaksiPage() {
   
   const [nopol, setNopol] = useState('');
   const [vehicleQuantity, setVehicleQuantity] = useState(1);
+  const [vehiclePlates, setVehiclePlates] = useState(['']);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -138,16 +139,28 @@ export default function TransaksiPage() {
     }
   };
 
-  // Data armada yang cocok dengan nopol yang sedang diisi
+  // Data armada yang cocok dengan nopol (jika 1 unit) atau unit pertama
   const selectedFleetItem = React.useMemo(() => {
-    if (!nopol) return null;
-    const clean = nopol.trim().toLowerCase().replace(/\s+/g, '');
+    const targetPlate = vehiclePlates[0] || nopol;
+    if (!targetPlate) return null;
+    const clean = targetPlate.trim().toLowerCase().replace(/\s+/g, '');
     return fleet.find((f) => {
       const fn = String(f.nopol || '').trim().toLowerCase().replace(/\s+/g, '');
       const fid = String(f.id || '').trim().toLowerCase();
       return fn === clean || fid === clean;
     }) || null;
-  }, [fleet, nopol]);
+  }, [fleet, vehiclePlates, nopol]);
+
+  // Helper untuk mengambil objek armada dari plat nomor apapun
+  const getFleetForPlate = React.useCallback((plateStr) => {
+    if (!plateStr) return null;
+    const clean = String(plateStr).trim().toLowerCase().replace(/\s+/g, '');
+    return fleet.find((f) => {
+      const fn = String(f.nopol || '').trim().toLowerCase().replace(/\s+/g, '');
+      const fid = String(f.id || '').trim().toLowerCase();
+      return fn === clean || fid === clean;
+    }) || null;
+  }, [fleet]);
 
   // Muat ulang daftar armada jika formulir sewa baru dibuka
   useEffect(() => {
@@ -158,61 +171,94 @@ export default function TransaksiPage() {
     }
   }, [showForm]);
 
-  // Hitung otomatis harga sewa berdasarkan tarif armada (basis Hari & extend Rp 10.000/jam, max 4 jam)
-  const calculateRentalPrice = (targetMotorOrRate = selectedFleetItem || nopol, days = durationDays, ext = extendHours, qty = vehicleQuantity) => {
-    let rate = 0;
-    let unitLabel = '';
+  // Hitung otomatis harga sewa berdasarkan akumulasi tarif motor pada masing-masing unit
+  const calculateRentalPriceFromPlates = (plates = vehiclePlates, days = durationDays, ext = extendHours, qty = vehicleQuantity) => {
+    const count = Math.max(1, qty, plates.length);
+    let totalDailyRate = 0;
 
-    if (typeof targetMotorOrRate === 'number') {
-      rate = targetMotorOrRate;
-    } else if (targetMotorOrRate && typeof targetMotorOrRate === 'object') {
-      rate = Number(targetMotorOrRate.dailyRate) || 0;
-      unitLabel = `${targetMotorOrRate.nopol} (${targetMotorOrRate.brand || ''} ${targetMotorOrRate.model || ''})`.trim();
-    } else if (typeof targetMotorOrRate === 'string') {
-      const q = targetMotorOrRate.trim().toLowerCase();
-      const cleanQ = q.replace(/\s+/g, '');
-      const found = fleet.find((f) => {
-        const fn = String(f.nopol || '').trim().toLowerCase();
-        const fid = String(f.id || '').trim().toLowerCase();
-        return fn === q || fn.replace(/\s+/g, '') === cleanQ || fid === q;
-      });
-      if (found && found.dailyRate) {
-        rate = Number(found.dailyRate);
-        unitLabel = `${found.nopol} (${found.brand || ''} ${found.model || ''})`.trim();
+    for (let i = 0; i < count; i++) {
+      const p = plates[i] || '';
+      let unitRate = 0;
+
+      if (p) {
+        const cleanP = p.trim().toLowerCase().replace(/\s+/g, '');
+        const found = fleet.find((f) => {
+          const fn = String(f.nopol || '').trim().toLowerCase().replace(/\s+/g, '');
+          const fid = String(f.id || '').trim().toLowerCase();
+          return fn === cleanP || fid === cleanP;
+        });
+        if (found && found.dailyRate) {
+          unitRate = Number(found.dailyRate);
+        }
       }
-    }
 
-    if (!rate) {
-      rate = 100000;
+      if (!unitRate) {
+        unitRate = 100000; // default tarif standar per 24 jam jika unit belum dipilih
+      }
+
+      totalDailyRate += unitRate;
     }
 
     const billing = calculateRentalBilling({
       days,
       extendHours: ext,
-      dailyRate: rate,
-      hourlyOvertimeRate: EXTEND_HOURLY_RATE
+      dailyRate: totalDailyRate,
+      hourlyOvertimeRate: EXTEND_HOURLY_RATE * count
     });
 
-    const quantity = Math.max(1, Number(qty) || 1);
-    const totalPrice = billing.totalPrice * quantity;
+    setRentalPrice(billing.totalPrice);
+    return { ...billing, totalDailyRate, count };
+  };
 
-    setRentalPrice(totalPrice);
-    return { ...billing, totalPrice, quantity, unitLabel };
+  const calculateRentalPrice = (targetMotorOrRate = selectedFleetItem || nopol, days = durationDays, ext = extendHours, qty = vehicleQuantity) => {
+    return calculateRentalPriceFromPlates(vehiclePlates, days, ext, qty);
   };
 
   // Kasir mengubah jumlah unit kendaraan yang disewa
   const handleVehicleQuantityChange = (val) => {
     const q = Math.max(1, Number(val) || 1);
     setVehicleQuantity(q);
-    calculateRentalPrice(selectedFleetItem || nopol, durationDays, extendHours, q);
+    const updatedPlates = [...vehiclePlates];
+    if (updatedPlates.length < q) {
+      while (updatedPlates.length < q) updatedPlates.push('');
+    } else if (updatedPlates.length > q) {
+      updatedPlates.splice(q);
+    }
+    setVehiclePlates(updatedPlates);
+    setNopol(updatedPlates.filter(Boolean).join(', '));
+    calculateRentalPriceFromPlates(updatedPlates, durationDays, extendHours, q);
   };
 
-  // Pilih motor dari armada: otomatis isi nopol & estimasi tarif harian/perjam
-  const handleSelectMotor = (e) => {
-    const selectedNopol = e.target.value;
-    setNopol(selectedNopol);
-    if (selectedNopol) {
-      calculateRentalPrice(selectedNopol, durationDays, extendHours, vehicleQuantity);
+  // Kasir menambah 1 unit motor baru
+  const handleAddVehicleUnit = () => {
+    handleVehicleQuantityChange(vehicleQuantity + 1);
+  };
+
+  // Kasir menghapus 1 baris unit motor
+  const handleRemoveVehicleUnit = (idxToRemove) => {
+    if (vehicleQuantity <= 1) return;
+    const updatedPlates = vehiclePlates.filter((_, i) => i !== idxToRemove);
+    if (updatedPlates.length === 0) updatedPlates.push('');
+    const newQ = updatedPlates.length;
+    setVehicleQuantity(newQ);
+    setVehiclePlates(updatedPlates);
+    setNopol(updatedPlates.filter(Boolean).join(', '));
+    calculateRentalPriceFromPlates(updatedPlates, durationDays, extendHours, newQ);
+  };
+
+  // Kasir memilih / mengubah nopol pada baris unit tertentu
+  const handleUpdatePlate = (index, plateVal, itemObj) => {
+    const updatedPlates = [...vehiclePlates];
+    while (updatedPlates.length <= index) updatedPlates.push('');
+    updatedPlates[index] = (plateVal || '').toUpperCase().trim();
+    setVehiclePlates(updatedPlates);
+
+    const filled = updatedPlates.filter(Boolean);
+    setNopol(filled.join(', '));
+    calculateRentalPriceFromPlates(updatedPlates, durationDays, extendHours, vehicleQuantity);
+
+    if (itemObj) {
+      showToast(`Unit ${index + 1}: Motor ${itemObj.nopol} (${itemObj.brand} ${itemObj.model}) dipilih.`);
     }
   };
 
@@ -376,9 +422,30 @@ export default function TransaksiPage() {
   // ================= FITUR EDIT TRANSAKSI =================
   const handleStartEdit = (tx) => {
     setEditingTxId(tx.id);
-    const qty = Number(tx.vehicleQuantity) || (tx.nopol && tx.nopol.startsWith('MULTI-UNIT') ? 2 : 1);
+    
+    // Ekstrak data nopol dan jumlah kendaraan
+    let qty = Number(tx.vehicleQuantity) || 1;
+    let plates = [''];
+
+    if (tx.nopol) {
+      if (tx.nopol.startsWith('MULTI-UNIT')) {
+        const m = tx.nopol.match(/\((\d+)\s*Kendaraan\)/i);
+        qty = tx.vehicleQuantity || (m ? parseInt(m[1]) : 2);
+        plates = Array(qty).fill('');
+      } else if (tx.nopol.includes(',')) {
+        plates = tx.nopol.split(',').map((s) => s.replace(/\(\+\d+.*?\)/, '').trim());
+        qty = Math.max(plates.length, Number(tx.vehicleQuantity) || plates.length);
+        while (plates.length < qty) plates.push('');
+      } else {
+        plates = [tx.nopol.replace(/\(\+\d+.*?\)/, '').trim()];
+        qty = Math.max(1, Number(tx.vehicleQuantity) || 1);
+        while (plates.length < qty) plates.push('');
+      }
+    }
+
     setVehicleQuantity(qty);
-    setNopol(tx.nopol && tx.nopol.startsWith('MULTI-UNIT') ? '' : (tx.nopol || ''));
+    setVehiclePlates(plates);
+    setNopol(plates.filter(Boolean).join(', '));
     setSelectedCustomerId(tx.customerId || '');
     setCustomerName(tx.customerName || '');
     setCustomerPhone(tx.customerPhone || '');
@@ -431,6 +498,7 @@ export default function TransaksiPage() {
     setEditingTxId(null);
     setNopol('');
     setVehicleQuantity(1);
+    setVehiclePlates(['']);
     setSelectedCustomerId('');
     setCustomerName('');
     setCustomerPhone('');
@@ -448,11 +516,15 @@ export default function TransaksiPage() {
   // Simpan Transaksi (Bisa Baru atau Perbarui yang Diedit)
   const handleSaveTransaction = async (e) => {
     e.preventDefault();
-    const cleanNopol = nopol.trim().toUpperCase();
     const isMultiVehicle = vehicleQuantity > 1;
 
-    // Nomor polisi HANYA wajib jika menyewa 1 kendaraan. Jika > 1 kendaraan, bersifat TIDAK WAJIB (opsional)
-    if (!isMultiVehicle && !cleanNopol) {
+    // Kumpulkan plat nomor yang terisi
+    const filledPlates = vehiclePlates
+      .map((p) => p.trim().toUpperCase())
+      .filter(Boolean);
+
+    // Validasi: Jika hanya 1 kendaraan, nopol WAJIB diisi
+    if (!isMultiVehicle && filledPlates.length === 0 && !nopol.trim()) {
       showToast('Nomor polisi kendaraan wajib diisi jika hanya menyewa 1 kendaraan!', 'error');
       return;
     }
@@ -467,8 +539,14 @@ export default function TransaksiPage() {
       const txId = isEdit ? editingTxId : `TRX-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
       const calcDays = Math.max(1, Math.ceil(durationHours / 24));
 
-      // Jika menyewa lebih dari 1 kendaraan dan nopol dikosongkan, beri label multi-unit yang rapi
-      const finalNopol = cleanNopol || `MULTI-UNIT (${vehicleQuantity} Kendaraan)`;
+      // Susun nopol yang rapi:
+      let finalNopol = '';
+      if (filledPlates.length > 0) {
+        const remaining = vehicleQuantity - filledPlates.length;
+        finalNopol = filledPlates.join(', ') + (remaining > 0 ? ` (+${remaining} Unit)` : '');
+      } else {
+        finalNopol = `MULTI-UNIT (${vehicleQuantity} Kendaraan)`;
+      }
 
       // Simpan/update data pelanggan jika belum terdaftar
       let finalCustId = selectedCustomerId;
@@ -730,17 +808,17 @@ export default function TransaksiPage() {
             </div>
 
             {/* 1. Referensi Unit Kendaraan & Jumlah Unit */}
-            <div className="form-group" style={{ background: vehicleQuantity > 1 ? 'rgba(59, 130, 246, 0.03)' : 'transparent', padding: vehicleQuantity > 1 ? '12px' : '0', borderRadius: '12px', border: vehicleQuantity > 1 ? '1px solid rgba(59, 130, 246, 0.2)' : 'none' }}>
+            <div className="form-group" style={{ background: vehicleQuantity > 1 ? 'rgba(59, 130, 246, 0.03)' : 'transparent', padding: vehicleQuantity > 1 ? '14px' : '0', borderRadius: '12px', border: vehicleQuantity > 1 ? '1px solid rgba(59, 130, 246, 0.2)' : 'none', marginBottom: '16px' }}>
               
               {/* Pilihan Jumlah Kendaraan */}
-              <div style={{ marginBottom: '10px' }}>
+              <div style={{ marginBottom: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Bike size={15} color="var(--primary)" />
                     Jumlah Kendaraan yang Disewa:
                   </label>
                   <span style={{ fontSize: '11px', fontWeight: 800, color: vehicleQuantity > 1 ? '#2563eb' : 'var(--text-muted)' }}>
-                    {vehicleQuantity} Unit {vehicleQuantity > 1 ? '(Multi-Kendaraan)' : '(1 Unit)'}
+                    {vehicleQuantity} Unit {vehicleQuantity > 1 ? '(Multi-Kendaraan)' : '(Tunggal)'}
                   </span>
                 </div>
 
@@ -785,13 +863,24 @@ export default function TransaksiPage() {
                       </button>
                     ))}
                   </div>
+
+                  {/* Tombol Tambah Unit Cepat */}
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleAddVehicleUnit}
+                    style={{ fontSize: '11px', padding: '4px 10px', gap: '4px', marginLeft: 'auto' }}
+                  >
+                    <Plus size={13} />
+                    <span>Tambah Unit</span>
+                  </button>
                 </div>
               </div>
 
               {/* Banner Penjelasan jika > 1 Kendaraan */}
               {vehicleQuantity > 1 && (
                 <div style={{
-                  marginBottom: '10px',
+                  marginBottom: '12px',
                   padding: '8px 12px',
                   background: 'rgba(59, 130, 246, 0.08)',
                   border: '1px solid rgba(59, 130, 246, 0.25)',
@@ -804,80 +893,116 @@ export default function TransaksiPage() {
                 }}>
                   <Info size={16} style={{ flexShrink: 0 }} />
                   <span>
-                    Pelanggan menyewa <strong>{vehicleQuantity} kendaraan</strong>. Nomor Polisi <strong>TIDAK WAJIB DIISI (Opsional)</strong>. Anda bisa mengosongkannya atau memasukkan nopol unit terkait.
+                    Pelanggan menyewa <strong>{vehicleQuantity} kendaraan</strong>. Setiap unit memiliki pilihan nomor polisi tersendiri yang bersifat <strong>tidak wajib diisi (opsional)</strong>.
                   </span>
                 </div>
               )}
 
-              {/* Input Nomor Polisi Kendaraan */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label className="form-label" style={{ margin: 0 }}>
-                  Nomor Polisi Kendaraan{' '}
-                  <span style={{ color: vehicleQuantity > 1 ? '#2563eb' : 'var(--accent-rose)', fontWeight: 700 }}>
-                    {vehicleQuantity > 1 ? '(Opsional - Sewa > 1 Unit)' : '* (Wajib Diisi)'}
-                  </span>
-                </label>
-                <span className="badge badge-success" style={{ fontSize: '10px' }}>
-                  {fleet.filter(f => f.status === 'available').length} Tersedia
-                </span>
+              {/* Daftar Input Nomor Polisi per Kendaraan */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {Array.from({ length: vehicleQuantity }).map((_, idx) => {
+                  const currentPlate = vehiclePlates[idx] || '';
+                  const fleetItem = getFleetForPlate(currentPlate);
+                  const otherPlates = vehiclePlates.filter((_, i) => i !== idx).map(p => p.trim().toUpperCase()).filter(Boolean);
+
+                  return (
+                    <div 
+                      key={idx} 
+                      style={{ 
+                        background: vehicleQuantity > 1 ? '#ffffff' : 'transparent',
+                        padding: vehicleQuantity > 1 ? '10px 12px' : '0',
+                        borderRadius: '10px',
+                        border: vehicleQuantity > 1 ? '1px solid var(--border)' : 'none',
+                        boxShadow: vehicleQuantity > 1 ? '0 1px 3px rgba(0,0,0,0.03)' : 'none'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                        <label className="form-label" style={{ margin: 0, fontSize: '12px', fontWeight: 700 }}>
+                          {vehicleQuantity > 1 ? `Unit ${idx + 1}: Nomor Polisi Kendaraan` : 'Nomor Polisi Kendaraan'}{' '}
+                          <span style={{ color: vehicleQuantity > 1 ? '#2563eb' : 'var(--accent-rose)', fontWeight: 700 }}>
+                            {vehicleQuantity > 1 ? '(Opsional)' : '* (Wajib)'}
+                          </span>
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {idx === 0 && (
+                            <span className="badge badge-success" style={{ fontSize: '10px' }}>
+                              {fleet.filter(f => f.status === 'available').length} Tersedia
+                            </span>
+                          )}
+                          {vehicleQuantity > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVehicleUnit(idx)}
+                              className="btn-icon"
+                              title={`Hapus Unit ${idx + 1}`}
+                              style={{ color: 'var(--accent-rose)', padding: '2px', width: '22px', height: '22px', borderColor: 'transparent' }}
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <SearchableSelect
+                        options={fleet}
+                        value={currentPlate}
+                        valueKey="nopol"
+                        displayKey="nopol"
+                        secondaryKey="model"
+                        badgeKey="status"
+                        badgeRenderer={(item) => {
+                          const isPickedOther = otherPlates.includes(item.nopol?.toUpperCase());
+                          if (isPickedOther) {
+                            return (
+                              <span className="badge badge-warning" style={{ fontSize: '10px' }}>
+                                Dipilih di unit lain
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className={`badge ${item.status === 'available' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
+                              {item.status === 'available' ? 'Tersedia' : item.status} • {formatRupiah(item.dailyRate)}/hari
+                            </span>
+                          );
+                        }}
+                        placeholder={vehicleQuantity > 1 ? `Opsional: Pilih atau ketik nopol Unit ${idx + 1}...` : "Pilih atau cari motor armada (nopol, merk, tipe)..."}
+                        searchPlaceholder="Ketik nopol (B 1234 XYZ) atau nama motor..."
+                        allowCustom={true}
+                        customLabel="Gunakan nopol baru"
+                        onChange={(val, item) => {
+                          const plate = (item?.nopol || val || '').toUpperCase().trim();
+                          handleUpdatePlate(idx, plate, item);
+                        }}
+                      />
+
+                      {/* Rincian Motor Terpilih jika diisi */}
+                      {fleetItem && (
+                        <div style={{
+                          marginTop: '6px',
+                          padding: '6px 10px',
+                          background: 'rgba(5, 150, 105, 0.07)',
+                          border: '1px solid rgba(5, 150, 105, 0.25)',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '11px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Bike size={13} color="var(--primary)" />
+                            <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>
+                              {fleetItem.brand} {fleetItem.model} {fleetItem.color ? `(${fleetItem.color})` : ''}
+                            </span>
+                          </div>
+                          <div style={{ color: 'var(--primary)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>
+                            {formatRupiah(fleetItem.dailyRate)} / 24 Jam
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <SearchableSelect
-                options={fleet}
-                value={nopol}
-                valueKey="nopol"
-                displayKey="nopol"
-                secondaryKey="model"
-                badgeKey="status"
-                badgeRenderer={(item) => (
-                  <span className={`badge ${item.status === 'available' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
-                    {item.status === 'available' ? 'Tersedia' : item.status} • {formatRupiah(item.dailyRate)}/hari
-                  </span>
-                )}
-                placeholder={vehicleQuantity > 1 ? "Opsional: Pilih atau ketik nopol (bisa dikosongkan)..." : "Pilih atau cari motor armada (nopol, merk, tipe)..."}
-                searchPlaceholder="Ketik nopol (B 1234 XYZ) atau nama motor..."
-                allowCustom={true}
-                customLabel="Gunakan nopol baru"
-                onChange={(val, item) => {
-                  const plate = (item?.nopol || val || '').toUpperCase().trim();
-                  setNopol(plate);
-                  if (item && item.dailyRate) {
-                    const res = calculateRentalPrice(item, durationDays, extendHours, vehicleQuantity);
-                    if (res) {
-                      showToast(`Motor ${item.nopol} (${item.brand} ${item.model}) dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
-                    }
-                  } else if (plate) {
-                    const res = calculateRentalPrice(plate, durationDays, extendHours, vehicleQuantity);
-                    if (res) {
-                      showToast(`Motor ${plate} dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
-                    }
-                  }
-                }}
-              />
-
-              {/* Rincian Motor Terpilih jika diisi */}
-              {selectedFleetItem && (
-                <div style={{
-                  marginTop: '8px',
-                  padding: '8px 12px',
-                  background: 'rgba(5, 150, 105, 0.07)',
-                  border: '1px solid rgba(5, 150, 105, 0.25)',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '12px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Bike size={15} color="var(--primary)" />
-                    <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>
-                      {selectedFleetItem.brand} {selectedFleetItem.model} {selectedFleetItem.color ? `(${selectedFleetItem.color})` : ''}
-                    </span>
-                  </div>
-                  <div style={{ color: 'var(--primary)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>
-                    {formatRupiah(selectedFleetItem.dailyRate)} / 24 Jam {vehicleQuantity > 1 ? `(x ${vehicleQuantity} Unit)` : ''}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* 2. Integrasi Manajemen Pelanggan (Auto-fill) */}
