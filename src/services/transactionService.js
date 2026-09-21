@@ -31,6 +31,7 @@ export const transactionService = {
       return {
         ...t,
         discount: Number(t.discount || 0),
+        vehicleQuantity: Number(t.vehicleQuantity || 1),
         amountPaid,
         paymentStatus,
         durationHours: t.durationHours || (t.durationDays || 1) * 24,
@@ -57,6 +58,7 @@ export const transactionService = {
     return {
       ...t,
       discount: Number(t.discount || 0),
+      vehicleQuantity: Number(t.vehicleQuantity || 1),
       amountPaid,
       paymentStatus,
       durationHours: t.durationHours || (t.durationDays || 1) * 24,
@@ -87,6 +89,8 @@ export const transactionService = {
     const amountPaid = Number(tx.amountPaid != null ? tx.amountPaid : total);
     const paymentStatus = determinePaymentStatus(amountPaid, total, tx.paymentStatus);
 
+    const vehicleQuantity = Math.max(1, Number(tx.vehicleQuantity) || 1);
+
     // 1. Simpan Transaksi ke Prisma
     const saved = await prisma.transaction.upsert({
       where: { id },
@@ -99,6 +103,7 @@ export const transactionService = {
         endDate,
         durationDays,
         durationHours,
+        vehicleQuantity,
         rentalPrice,
         extraCosts: JSON.stringify(tx.extraCosts || []),
         discount,
@@ -121,6 +126,7 @@ export const transactionService = {
         endDate,
         durationDays,
         durationHours,
+        vehicleQuantity,
         rentalPrice,
         extraCosts: JSON.stringify(tx.extraCosts || []),
         discount,
@@ -137,16 +143,25 @@ export const transactionService = {
     });
 
     // 2. Perbarui status armada sesuai status sewa
-    if (nopol && (status === 'active' || status === 'aktif')) {
-      await prisma.fleet.updateMany({
-        where: { nopol, deletedAt: null },
-        data: { status: 'rented' },
-      });
-    } else if (nopol && (status === 'selesai' || status === 'booking')) {
-      await prisma.fleet.updateMany({
-        where: { nopol, deletedAt: null },
-        data: { status: 'available' },
-      });
+    if (nopol) {
+      const plates = nopol
+        .split(/[,;/]+/)
+        .map((p) => p.trim().toUpperCase())
+        .filter((p) => p && !p.startsWith('MULTI-UNIT'));
+
+      if (plates.length > 0) {
+        if (status === 'active' || status === 'aktif') {
+          await prisma.fleet.updateMany({
+            where: { nopol: { in: plates }, deletedAt: null },
+            data: { status: 'rented' },
+          });
+        } else if (status === 'selesai' || status === 'booking') {
+          await prisma.fleet.updateMany({
+            where: { nopol: { in: plates }, deletedAt: null },
+            data: { status: 'available' },
+          });
+        }
+      }
     }
 
     // 3. Tambahkan akumulasi rental pada pelanggan
@@ -188,6 +203,7 @@ export const transactionService = {
     return {
       ...saved,
       durationHours,
+      vehicleQuantity,
       extraCosts: tx.extraCosts || [],
       createdAt: saved.createdAt.toISOString(),
     };
@@ -232,6 +248,7 @@ export const transactionService = {
         endDate: tx.endDate || oldTx.endDate,
         durationDays: durationDays,
         durationHours: durationHours,
+        vehicleQuantity: tx.vehicleQuantity != null ? Number(tx.vehicleQuantity) : (oldTx.vehicleQuantity || 1),
         rentalPrice: tx.rentalPrice != null ? Number(tx.rentalPrice) : oldTx.rentalPrice,
         extraCosts: tx.extraCosts ? JSON.stringify(tx.extraCosts) : oldTx.extraCosts,
         discount: tx.discount != null ? Number(tx.discount) : (oldTx.discount || 0),
@@ -248,22 +265,30 @@ export const transactionService = {
     // Sinkronisasi status armada
     const activeNopol = (tx.nopol || oldTx.nopol || '').toUpperCase();
     if (activeNopol) {
-      if (nextStatus === 'selesai' || nextStatus === 'booking') {
-        await prisma.fleet.updateMany({
-          where: { nopol: activeNopol, deletedAt: null },
-          data: { status: 'available' },
-        });
-      } else if (nextStatus === 'active' || nextStatus === 'aktif') {
-        await prisma.fleet.updateMany({
-          where: { nopol: activeNopol, deletedAt: null },
-          data: { status: 'rented' },
-        });
+      const plates = activeNopol
+        .split(/[,;/]+/)
+        .map((p) => p.trim())
+        .filter((p) => p && !p.startsWith('MULTI-UNIT'));
+
+      if (plates.length > 0) {
+        if (nextStatus === 'selesai' || nextStatus === 'booking') {
+          await prisma.fleet.updateMany({
+            where: { nopol: { in: plates }, deletedAt: null },
+            data: { status: 'available' },
+          });
+        } else if (nextStatus === 'active' || nextStatus === 'aktif') {
+          await prisma.fleet.updateMany({
+            where: { nopol: { in: plates }, deletedAt: null },
+            data: { status: 'rented' },
+          });
+        }
       }
     }
 
     return {
       ...updated,
       durationHours,
+      vehicleQuantity: Number(updated.vehicleQuantity || 1),
       extraCosts: tx.extraCosts || (oldTx.extraCosts ? JSON.parse(oldTx.extraCosts) : []),
       discount: Number(updated.discount || 0),
       createdAt: updated.createdAt.toISOString(),

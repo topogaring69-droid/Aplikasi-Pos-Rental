@@ -85,6 +85,7 @@ model Transaction {
   endDate       String    @map("end_date")
   durationDays  Int       @default(1) @map("duration_days")
   durationHours Int?      @default(24) @map("duration_hours")
+  vehicleQuantity Int?    @default(1) @map("vehicle_quantity")
   rentalPrice   Int       @map("rental_price")
   extraCosts    String?   @default("[]") @map("extra_costs")
   discount      Int       @default(0) @map("discount")

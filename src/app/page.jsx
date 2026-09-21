@@ -19,6 +19,7 @@ import {
   Phone,
   RotateCcw,
   AlertCircle,
+  Info,
   Loader2
 } from 'lucide-react';
 import { 
@@ -71,6 +72,7 @@ export default function TransaksiPage() {
   const [editingTxId, setEditingTxId] = useState(null); // null = buat baru, string ID = edit
   
   const [nopol, setNopol] = useState('');
+  const [vehicleQuantity, setVehicleQuantity] = useState(1);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -157,7 +159,7 @@ export default function TransaksiPage() {
   }, [showForm]);
 
   // Hitung otomatis harga sewa berdasarkan tarif armada (basis Hari & extend Rp 10.000/jam, max 4 jam)
-  const calculateRentalPrice = (targetMotorOrRate = selectedFleetItem || nopol, days = durationDays, ext = extendHours) => {
+  const calculateRentalPrice = (targetMotorOrRate = selectedFleetItem || nopol, days = durationDays, ext = extendHours, qty = vehicleQuantity) => {
     let rate = 0;
     let unitLabel = '';
 
@@ -191,8 +193,18 @@ export default function TransaksiPage() {
       hourlyOvertimeRate: EXTEND_HOURLY_RATE
     });
 
-    setRentalPrice(billing.totalPrice);
-    return { ...billing, unitLabel };
+    const quantity = Math.max(1, Number(qty) || 1);
+    const totalPrice = billing.totalPrice * quantity;
+
+    setRentalPrice(totalPrice);
+    return { ...billing, totalPrice, quantity, unitLabel };
+  };
+
+  // Kasir mengubah jumlah unit kendaraan yang disewa
+  const handleVehicleQuantityChange = (val) => {
+    const q = Math.max(1, Number(val) || 1);
+    setVehicleQuantity(q);
+    calculateRentalPrice(selectedFleetItem || nopol, durationDays, extendHours, q);
   };
 
   // Pilih motor dari armada: otomatis isi nopol & estimasi tarif harian/perjam
@@ -200,7 +212,7 @@ export default function TransaksiPage() {
     const selectedNopol = e.target.value;
     setNopol(selectedNopol);
     if (selectedNopol) {
-      calculateRentalPrice(selectedNopol, durationDays, extendHours);
+      calculateRentalPrice(selectedNopol, durationDays, extendHours, vehicleQuantity);
     }
   };
 
@@ -257,7 +269,7 @@ export default function TransaksiPage() {
         setEndDate(formatToInput(newEnd));
       }
     }
-    calculateRentalPrice(selectedFleetItem || nopol, durationDays, ext);
+    calculateRentalPrice(selectedFleetItem || nopol, durationDays, ext, vehicleQuantity);
   };
 
   // 3. Kasir mengubah Mulai Sewa (Tanggal dan Jam)
@@ -309,7 +321,7 @@ export default function TransaksiPage() {
         setExtendHours(ext);
         setDurationHours(totalH);
         setOvertimeAlert(alertMsg);
-        calculateRentalPrice(selectedFleetItem || nopol, d, ext);
+        calculateRentalPrice(selectedFleetItem || nopol, d, ext, vehicleQuantity);
       }
     }
   };
@@ -364,7 +376,9 @@ export default function TransaksiPage() {
   // ================= FITUR EDIT TRANSAKSI =================
   const handleStartEdit = (tx) => {
     setEditingTxId(tx.id);
-    setNopol(tx.nopol || '');
+    const qty = Number(tx.vehicleQuantity) || (tx.nopol && tx.nopol.startsWith('MULTI-UNIT') ? 2 : 1);
+    setVehicleQuantity(qty);
+    setNopol(tx.nopol && tx.nopol.startsWith('MULTI-UNIT') ? '' : (tx.nopol || ''));
     setSelectedCustomerId(tx.customerId || '');
     setCustomerName(tx.customerName || '');
     setCustomerPhone(tx.customerPhone || '');
@@ -416,6 +430,7 @@ export default function TransaksiPage() {
   const resetForm = () => {
     setEditingTxId(null);
     setNopol('');
+    setVehicleQuantity(1);
     setSelectedCustomerId('');
     setCustomerName('');
     setCustomerPhone('');
@@ -433,8 +448,12 @@ export default function TransaksiPage() {
   // Simpan Transaksi (Bisa Baru atau Perbarui yang Diedit)
   const handleSaveTransaction = async (e) => {
     e.preventDefault();
-    if (!nopol.trim()) {
-      showToast('Nomor polisi kendaraan wajib diisi!', 'error');
+    const cleanNopol = nopol.trim().toUpperCase();
+    const isMultiVehicle = vehicleQuantity > 1;
+
+    // Nomor polisi HANYA wajib jika menyewa 1 kendaraan. Jika > 1 kendaraan, bersifat TIDAK WAJIB (opsional)
+    if (!isMultiVehicle && !cleanNopol) {
+      showToast('Nomor polisi kendaraan wajib diisi jika hanya menyewa 1 kendaraan!', 'error');
       return;
     }
     if (!customerName.trim()) {
@@ -447,6 +466,9 @@ export default function TransaksiPage() {
       const isEdit = Boolean(editingTxId);
       const txId = isEdit ? editingTxId : `TRX-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
       const calcDays = Math.max(1, Math.ceil(durationHours / 24));
+
+      // Jika menyewa lebih dari 1 kendaraan dan nopol dikosongkan, beri label multi-unit yang rapi
+      const finalNopol = cleanNopol || `MULTI-UNIT (${vehicleQuantity} Kendaraan)`;
 
       // Simpan/update data pelanggan jika belum terdaftar
       let finalCustId = selectedCustomerId;
@@ -475,7 +497,8 @@ export default function TransaksiPage() {
 
       const payloadTx = {
         id: txId,
-        nopol: nopol.toUpperCase().trim(),
+        nopol: finalNopol,
+        vehicleQuantity: vehicleQuantity,
         customerId: finalCustId || null,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
@@ -706,10 +729,94 @@ export default function TransaksiPage() {
               </div>
             </div>
 
-            {/* 1. Referensi Unit Kendaraan */}
-            <div className="form-group">
+            {/* 1. Referensi Unit Kendaraan & Jumlah Unit */}
+            <div className="form-group" style={{ background: vehicleQuantity > 1 ? 'rgba(59, 130, 246, 0.03)' : 'transparent', padding: vehicleQuantity > 1 ? '12px' : '0', borderRadius: '12px', border: vehicleQuantity > 1 ? '1px solid rgba(59, 130, 246, 0.2)' : 'none' }}>
+              
+              {/* Pilihan Jumlah Kendaraan */}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Bike size={15} color="var(--primary)" />
+                    Jumlah Kendaraan yang Disewa:
+                  </label>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: vehicleQuantity > 1 ? '#2563eb' : 'var(--text-muted)' }}>
+                    {vehicleQuantity} Unit {vehicleQuantity > 1 ? '(Multi-Kendaraan)' : '(1 Unit)'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* Stepper Jumlah */}
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', background: '#fff' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleVehicleQuantityChange(Math.max(1, vehicleQuantity - 1))}
+                      style={{ padding: '5px 12px', border: 'none', background: '#f8fafc', fontWeight: 800, fontSize: '14px', cursor: vehicleQuantity <= 1 ? 'not-allowed' : 'pointer', color: 'var(--text-main)' }}
+                      disabled={vehicleQuantity <= 1}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={vehicleQuantity}
+                      onChange={(e) => handleVehicleQuantityChange(Math.max(1, Number(e.target.value) || 1))}
+                      style={{ width: '50px', textAlign: 'center', border: 'none', fontWeight: 800, fontSize: '14px', outline: 'none', color: 'var(--primary)' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleVehicleQuantityChange(vehicleQuantity + 1)}
+                      style={{ padding: '5px 12px', border: 'none', background: '#f8fafc', fontWeight: 800, fontSize: '14px', cursor: 'pointer', color: 'var(--text-main)' }}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {/* Preset Chips Jumlah Unit */}
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {[1, 2, 3, 4, 5].map((qty) => (
+                      <button
+                        key={qty}
+                        type="button"
+                        className={`btn btn-sm ${vehicleQuantity === qty ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => handleVehicleQuantityChange(qty)}
+                        style={{ padding: '3px 8px', fontSize: '11px', borderRadius: '6px' }}
+                      >
+                        {qty} Unit
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner Penjelasan jika > 1 Kendaraan */}
+              {vehicleQuantity > 1 && (
+                <div style={{
+                  marginBottom: '10px',
+                  padding: '8px 12px',
+                  background: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  color: '#1e40af',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <Info size={16} style={{ flexShrink: 0 }} />
+                  <span>
+                    Pelanggan menyewa <strong>{vehicleQuantity} kendaraan</strong>. Nomor Polisi <strong>TIDAK WAJIB DIISI (Opsional)</strong>. Anda bisa mengosongkannya atau memasukkan nopol unit terkait.
+                  </span>
+                </div>
+              )}
+
+              {/* Input Nomor Polisi Kendaraan */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label className="form-label" style={{ margin: 0 }}>Nomor Polisi Kendaraan *</label>
+                <label className="form-label" style={{ margin: 0 }}>
+                  Nomor Polisi Kendaraan{' '}
+                  <span style={{ color: vehicleQuantity > 1 ? '#2563eb' : 'var(--accent-rose)', fontWeight: 700 }}>
+                    {vehicleQuantity > 1 ? '(Opsional - Sewa > 1 Unit)' : '* (Wajib Diisi)'}
+                  </span>
+                </label>
                 <span className="badge badge-success" style={{ fontSize: '10px' }}>
                   {fleet.filter(f => f.status === 'available').length} Tersedia
                 </span>
@@ -726,7 +833,7 @@ export default function TransaksiPage() {
                     {item.status === 'available' ? 'Tersedia' : item.status} • {formatRupiah(item.dailyRate)}/hari
                   </span>
                 )}
-                placeholder="Pilih atau cari motor armada (nopol, merk, tipe)..."
+                placeholder={vehicleQuantity > 1 ? "Opsional: Pilih atau ketik nopol (bisa dikosongkan)..." : "Pilih atau cari motor armada (nopol, merk, tipe)..."}
                 searchPlaceholder="Ketik nopol (B 1234 XYZ) atau nama motor..."
                 allowCustom={true}
                 customLabel="Gunakan nopol baru"
@@ -734,12 +841,12 @@ export default function TransaksiPage() {
                   const plate = (item?.nopol || val || '').toUpperCase().trim();
                   setNopol(plate);
                   if (item && item.dailyRate) {
-                    const res = calculateRentalPrice(item, durationDays, extendHours);
+                    const res = calculateRentalPrice(item, durationDays, extendHours, vehicleQuantity);
                     if (res) {
                       showToast(`Motor ${item.nopol} (${item.brand} ${item.model}) dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
                     }
                   } else if (plate) {
-                    const res = calculateRentalPrice(plate, durationDays, extendHours);
+                    const res = calculateRentalPrice(plate, durationDays, extendHours, vehicleQuantity);
                     if (res) {
                       showToast(`Motor ${plate} dipilih. Biaya sewa otomatis diatur: ${formatRupiah(res.totalPrice)}`);
                     }
@@ -747,7 +854,7 @@ export default function TransaksiPage() {
                 }}
               />
 
-              {/* Rincian Motor Terpilih */}
+              {/* Rincian Motor Terpilih jika diisi */}
               {selectedFleetItem && (
                 <div style={{
                   marginTop: '8px',
@@ -767,7 +874,7 @@ export default function TransaksiPage() {
                     </span>
                   </div>
                   <div style={{ color: 'var(--primary)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>
-                    {formatRupiah(selectedFleetItem.dailyRate)} / 24 Jam
+                    {formatRupiah(selectedFleetItem.dailyRate)} / 24 Jam {vehicleQuantity > 1 ? `(x ${vehicleQuantity} Unit)` : ''}
                   </div>
                 </div>
               )}
@@ -1011,8 +1118,9 @@ export default function TransaksiPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>Biaya Sewa Pokok (Rp) *</label>
                 <span style={{ fontSize: '11px', color: selectedFleetItem ? 'var(--primary)' : 'var(--text-muted)', fontWeight: selectedFleetItem ? '700' : '400' }}>
+                  {vehicleQuantity > 1 ? `${vehicleQuantity} Unit x ` : ''}
                   {durationDays} Hari x {formatRupiah(selectedFleetItem ? selectedFleetItem.dailyRate : 100000)}
-                  {extendHours > 0 ? ` + Extend ${extendHours} Jam (${formatRupiah(extendHours * 10000)})` : ''}
+                  {extendHours > 0 ? ` + Extend ${extendHours} Jam (${formatRupiah(extendHours * 10000 * vehicleQuantity)})` : ''}
                 </span>
               </div>
               <input

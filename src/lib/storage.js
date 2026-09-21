@@ -388,16 +388,18 @@ export async function saveTransaction(tx) {
   memCache[KEYS.TRANSACTIONS] = { data: list, timestamp: Date.now() };
 
   // Jika nopol ganti saat edit, kembalikan nopol lama ke available
-  if (oldItem && oldItem.nopol && oldItem.nopol.toUpperCase() !== saved.nopol?.toUpperCase()) {
-    updateVehicleStatus(oldItem.nopol, 'available');
+  if (oldItem && oldItem.nopol && oldItem.nopol.toUpperCase() !== saved.nopol?.toUpperCase() && !oldItem.nopol.startsWith('MULTI-UNIT')) {
+    const oldPlates = oldItem.nopol.split(/[,;/]+/).map(p => p.trim()).filter(Boolean);
+    oldPlates.forEach(p => updateVehicleStatus(p, 'available'));
   }
-  if (saved.nopol) {
+  if (saved.nopol && !saved.nopol.startsWith('MULTI-UNIT')) {
+    const newPlates = saved.nopol.split(/[,;/]+/).map(p => p.trim()).filter(Boolean);
     if (saved.status === 'booking') {
       // Motor belum diambil (masih booking)
     } else if (saved.status === 'selesai') {
-      updateVehicleStatus(saved.nopol, 'available');
+      newPlates.forEach(p => updateVehicleStatus(p, 'available'));
     } else {
-      updateVehicleStatus(saved.nopol, 'rented');
+      newPlates.forEach(p => updateVehicleStatus(p, 'rented'));
     }
   }
 
