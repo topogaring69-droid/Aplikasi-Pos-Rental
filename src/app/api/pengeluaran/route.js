@@ -50,14 +50,61 @@ export async function POST(request) {
       exp = await request.json();
     }
 
-    if (!exp.id) {
-      exp.id = `EXP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!exp.id || exp.id.startsWith('EXP-')) {
+      exp.id = await expenseService.generateNextId(exp.date);
     }
 
     const saved = await expenseService.create(exp, fileData);
     return NextResponse.json({ success: true, data: saved });
   } catch (error) {
     console.error('Pengeluaran POST Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(request) {
+  try {
+    const contentType = request.headers.get('content-type') || '';
+    let exp = {};
+    let fileData = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const file = formData.get('file');
+
+      exp = {
+        id: formData.get('id'),
+        isVehicleRelated: formData.get('isVehicleRelated') === 'true',
+        nopol: formData.get('nopol') || null,
+        category: formData.get('category') || 'Umum',
+        amount: formData.get('amount') !== null ? Number(formData.get('amount')) : undefined,
+        description: formData.get('description') !== null ? formData.get('description') : undefined,
+        date: formData.get('date') || undefined,
+        receiptPhoto: formData.get('receiptPhoto') || undefined,
+        gdriveFileId: formData.get('gdriveFileId') || undefined,
+        gdriveLink: formData.get('gdriveLink') || undefined,
+      };
+
+      if (file && typeof file === 'object' && file.size > 0) {
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        const ext = path.extname(file.name) || '.jpg';
+        const fileName = `nota_${Date.now()}_${Math.random().toString(36).substring(2, 7)}${ext}`;
+        const mimeType = file.type || 'image/jpeg';
+        fileData = { buffer, fileName, mimeType };
+      }
+    } else {
+      exp = await request.json();
+    }
+
+    if (!exp.id) {
+      return NextResponse.json({ success: false, error: 'Nomor transaksi (ID) pengeluaran wajib disertakan' }, { status: 400 });
+    }
+
+    const updated = await expenseService.update(exp.id, exp, fileData);
+    return NextResponse.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Pengeluaran PUT Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
@@ -77,3 +124,4 @@ export async function DELETE(request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+

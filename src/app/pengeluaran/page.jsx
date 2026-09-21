@@ -188,7 +188,7 @@ export default function PengeluaranPage() {
     setIsSubmitting(true);
 
     try {
-      const id = editingId || `EXP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const id = editingId || null;
 
       const expData = {
         id,
@@ -542,7 +542,23 @@ export default function PengeluaranPage() {
         filteredExpenses.map((exp) => (
           <div key={exp.id} className="list-item" style={{ cursor: 'default' }}>
             <div className="item-top">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span 
+                  style={{ 
+                    fontFamily: 'var(--font-mono)', 
+                    fontWeight: '800', 
+                    fontSize: '12px',
+                    color: 'var(--primary)',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    letterSpacing: '0.3px'
+                  }}
+                  title="Nomor Transaksi Pengeluaran"
+                >
+                  {exp.id}
+                </span>
                 <span className="badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontSize: '11px' }}>
                   {exp.category || 'Umum'}
                 </span>

@@ -713,6 +713,8 @@ export async function saveExpense(exp, file = null) {
   if (!isBrowser) return;
 
   let savedItem = { ...exp };
+  const isEditing = Boolean(exp.id && getExpenses().some((e) => e.id === exp.id));
+  const httpMethod = isEditing ? 'PUT' : 'POST';
 
   // Kirim data ke backend (termasuk berkas foto jika ada yang diunggah saat submit)
   let res;
@@ -726,12 +728,12 @@ export async function saveExpense(exp, file = null) {
     formData.append('file', file);
 
     res = await fetch('/api/pengeluaran', {
-      method: 'POST',
+      method: httpMethod,
       body: formData,
     });
   } else {
     res = await fetch('/api/pengeluaran', {
-      method: 'POST',
+      method: httpMethod,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(exp)
     });

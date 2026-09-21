@@ -460,28 +460,28 @@ export async function exportCustomersToExcel(customers = [], settings = {}) {
 }
 
 // ==================== 4. EKSPOR PENGELUARAN ====================
-export async function exportExpensesToExcel(expenses = [], settings = {}) {
+export async function exportExpensesReportToExcel(expenses = [], settings = {}, periodLabel = '') {
   if (!expenses || expenses.length === 0) {
-    showAlert({ title: 'Pengeluaran Kosong', text: 'Tidak ada data pengeluaran untuk diekspor.', icon: 'info' });
+    showAlert({ title: 'Pengeluaran Kosong', text: 'Tidak ada data pengeluaran untuk diekspor pada periode ini.', icon: 'info' });
     return;
   }
 
   const workbook = new ExcelJS.Workbook();
-  const ws = workbook.addWorksheet('Catatan Pengeluaran', {
+  const ws = workbook.addWorksheet('Laporan Pengeluaran', {
     views: [{ showGridLines: true }],
   });
 
-  createDocumentHeader(ws, 'Rekapitulasi Biaya Pengeluaran & Servis', settings);
+  const title = periodLabel ? `Laporan Pengeluaran (${periodLabel})` : 'Laporan Pengeluaran';
+  createDocumentHeader(ws, title, settings);
 
   const headers = [
     'No',
-    'ID Pengeluaran',
-    'Kategori',
-    'Terkait Kendaraan (Nopol)',
-    'Tanggal Pengeluaran',
-    'Keterangan / Rincian',
-    'Tautan Bukti Nota',
-    'Jumlah Biaya (Rp)',
+    'Nomor Transaksi Pengeluaran',
+    'Tanggal',
+    'Nomor Polisi',
+    'Jenis/Kategori Pengeluaran',
+    'Jumlah Biaya',
+    'Keterangan',
   ];
 
   const headerRow = ws.addRow(headers);
@@ -497,17 +497,17 @@ export async function exportExpensesToExcel(expenses = [], settings = {}) {
 
   expenses.forEach((exp, idx) => {
     const isEven = idx % 2 === 1;
-    totalBiaya += Number(exp.amount) || 0;
+    const amountVal = Number(exp.amount) || 0;
+    totalBiaya += amountVal;
 
     const row = ws.addRow([
       idx + 1,
       exp.id,
-      exp.category || 'Umum',
-      exp.isVehicleRelated && exp.nopol ? exp.nopol : 'Umum (Non-Kendaraan)',
       formatDateTime(exp.date),
+      exp.isVehicleRelated && exp.nopol ? exp.nopol : 'Non-Kendaraan',
+      exp.category || 'Umum',
+      amountVal,
       exp.description || '-',
-      exp.gdriveLink || (exp.receiptPhoto ? 'Foto Lokal' : '-'),
-      Number(exp.amount) || 0,
     ]);
 
     row.height = 22;
@@ -520,9 +520,9 @@ export async function exportExpensesToExcel(expenses = [], settings = {}) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.ZEBRA_BG } };
       }
 
-      if (colNum === 1 || colNum === 2 || colNum === 4 || colNum === 5) {
+      if (colNum === 1 || colNum === 2 || colNum === 3 || colNum === 4 || colNum === 5) {
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      } else if (colNum === 8) {
+      } else if (colNum === 6) {
         cell.alignment = { vertical: 'middle', horizontal: 'right' };
         cell.numFmt = '#,##0';
         cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: COLORS.STATUS_RED_TXT } };
@@ -531,26 +531,31 @@ export async function exportExpensesToExcel(expenses = [], settings = {}) {
   });
 
   // Baris Total Pengeluaran
-  const totalRow = ws.addRow(['TOTAL PENGELUARAN', '', '', '', '', '', '', totalBiaya]);
+  const totalRow = ws.addRow(['TOTAL BIAYA', '', '', '', '', totalBiaya, '']);
   totalRow.height = 24;
   totalRow.eachCell((cell, colNum) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.TOTAL_BG } };
     cell.font = { name: 'Calibri', size: 11, bold: true };
     cell.border = BORDER_TOTAL;
     cell.alignment = { vertical: 'middle' };
-    if (colNum === 8) {
+    if (colNum === 6) {
       cell.alignment = { vertical: 'middle', horizontal: 'right' };
       cell.numFmt = '#,##0';
     }
   });
 
-  ws.mergeCells(totalRow.number, 1, totalRow.number, 7);
+  ws.mergeCells(totalRow.number, 1, totalRow.number, 5);
   totalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
   autoFitColumns(ws);
 
-  const filename = `pengeluaran_shelby_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const filename = `laporan-pengeluaran-${todayStr}.xlsx`;
   await saveWorkbook(workbook, filename);
+}
+
+export async function exportExpensesToExcel(expenses = [], settings = {}) {
+  return exportExpensesReportToExcel(expenses, settings);
 }
 
 // ==================== 5. EKSPOR LAPORAN KEUANGAN ====================

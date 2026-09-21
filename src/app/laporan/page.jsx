@@ -15,7 +15,8 @@ import {
   ArrowDownRight,
   ImageIcon,
   X,
-  ExternalLink
+  ExternalLink,
+  Edit3
 } from 'lucide-react';
 import { 
   fetchTransactions, 
@@ -30,9 +31,10 @@ import {
   getGdriveReceiptUrl
 } from '../../lib/storage';
 import { exportReportToPrintable } from '../../lib/pdfExport';
-import { exportReportToExcel } from '../../lib/excelExport';
+import { exportReportToExcel, exportExpensesReportToExcel } from '../../lib/excelExport';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
+import ModalEditPengeluaran from '../../components/ModalEditPengeluaran';
 
 export default function LaporanPage() {
   const [transactions, setTransactions] = useState(() => getTransactions());
@@ -53,6 +55,7 @@ export default function LaporanPage() {
   const [selectedTx, setSelectedTx] = useState(null);
   const [strukTx, setStrukTx] = useState(null);
   const [zoomPhoto, setZoomPhoto] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -173,6 +176,10 @@ export default function LaporanPage() {
     });
   };
 
+  const handleExportPengeluaranExcel = () => {
+    exportExpensesReportToExcel(filteredExpenses, settings, getPeriodLabel());
+  };
+
   const handleDownloadReceipt = async (photoUrl, expId = 'EXP') => {
     if (!photoUrl) return;
     try {
@@ -207,11 +214,12 @@ export default function LaporanPage() {
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            onClick={handleExportExcel}
-            style={{ fontWeight: 700, background: '#ffffff' }}
-            title="Ekspor laporan keuangan lengkap ke Excel (.xlsx)"
+            onClick={activeTab === 'pengeluaran' ? handleExportPengeluaranExcel : handleExportExcel}
+            style={{ fontWeight: 700, background: '#ffffff', gap: '6px' }}
+            title={activeTab === 'pengeluaran' ? "Ekspor laporan pengeluaran ke Excel (.xlsx)" : "Ekspor laporan keuangan lengkap ke Excel (.xlsx)"}
           >
-            Ekspor Excel
+            <Download size={14} />
+            <span>Ekspor Excel</span>
           </button>
           <button
             type="button"
@@ -402,6 +410,22 @@ export default function LaporanPage() {
       {/* TAB 2: PENGELUARAN */}
       {activeTab === 'pengeluaran' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+              * Menampilkan <strong>{filteredExpenses.length}</strong> catatan pengeluaran ({getPeriodLabel()}).
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={handleExportPengeluaranExcel}
+              style={{ fontWeight: 700, background: '#ffffff', gap: '6px' }}
+              title="Ekspor laporan pengeluaran terfilter ke Excel (.xlsx)"
+            >
+              <Download size={14} />
+              <span>Export Excel</span>
+            </button>
+          </div>
+
           {filteredExpenses.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-dim)' }}>
               Tidak ada data pengeluaran pada periode ini.
@@ -410,7 +434,23 @@ export default function LaporanPage() {
             filteredExpenses.map((exp) => (
               <div key={exp.id} className="list-item" style={{ cursor: 'default' }}>
                 <div className="item-top">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span 
+                      style={{ 
+                        fontFamily: 'var(--font-mono)', 
+                        fontWeight: '800', 
+                        fontSize: '12px',
+                        color: 'var(--primary)',
+                        background: 'rgba(16, 185, 129, 0.1)',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        letterSpacing: '0.3px'
+                      }}
+                      title="Nomor Transaksi Pengeluaran"
+                    >
+                      {exp.id}
+                    </span>
                     <span className="badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontSize: '11px' }}>
                       {exp.category || 'Umum'}
                     </span>
@@ -426,38 +466,50 @@ export default function LaporanPage() {
                 </div>
 
                 <div className="item-middle">
-                  <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)', marginTop: '2px' }}>
                     {exp.description}
                   </div>
                 </div>
 
-                <div className="item-bottom" style={{ marginTop: '6px' }}>
+                <div className="item-bottom" style={{ marginTop: '8px' }}>
                   <span>{formatDateTime(exp.date)}</span>
-                  {exp.receiptPhoto && (
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px' }}
-                        onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
-                        title="Lihat Foto Nota"
-                      >
-                        <ImageIcon size={12} />
-                        <span>Lihat</span>
-                      </button>
-                      <a
-                        href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary btn-sm"
-                        style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                        title="Buka Berkas Nota di Google Drive"
-                      >
-                        <ExternalLink size={12} />
-                        <span>Google Drive</span>
-                      </a>
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ height: '28px', padding: '2px 10px', fontSize: '11px', gap: '4px', color: 'var(--accent-amber)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                      onClick={() => setEditingExpense(exp)}
+                      title="Edit transaksi pengeluaran ini"
+                    >
+                      <Edit3 size={13} />
+                      <span>Edit</span>
+                    </button>
+                    {exp.receiptPhoto && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px' }}
+                          onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
+                          title="Lihat Foto Nota"
+                        >
+                          <ImageIcon size={12} />
+                          <span>Lihat</span>
+                        </button>
+                        <a
+                          href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary btn-sm"
+                          style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                          title="Buka Berkas Nota di Google Drive"
+                        >
+                          <ExternalLink size={12} />
+                          <span>Drive</span>
+                        </a>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -532,6 +584,17 @@ export default function LaporanPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Edit Pengeluaran */}
+      {editingExpense && (
+        <ModalEditPengeluaran
+          exp={editingExpense}
+          onClose={() => setEditingExpense(null)}
+          onSaveSuccess={async () => {
+            await loadData();
+          }}
+        />
       )}
     </div>
   );
