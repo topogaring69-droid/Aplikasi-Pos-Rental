@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   CheckCircle2, 
@@ -55,35 +55,65 @@ export default function ModalBpkForm({
   const [status, setStatus] = useState(initialData?.status || 'Sudah Dibayar');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Opsi transaksi rental yang diformat untuk SearchableSelect
+  const transactionOptions = useMemo(() => {
+    return (transactions || []).map((t) => {
+      let deliveryFee = 0;
+      const extraList = Array.isArray(t.extraCosts) ? t.extraCosts : [];
+      for (const extra of extraList) {
+        const lbl = (extra.label || '').toLowerCase();
+        if (lbl.includes('antar') || lbl.includes('jemput') || lbl.includes('delivery') || lbl.includes('drop')) {
+          deliveryFee += Number(extra.amount) || 0;
+        }
+      }
+
+      return {
+        ...t,
+        id: t.id,
+        nopol: t.nopol || '',
+        customerName: t.customerName || '',
+        customerPhone: t.customerPhone || '',
+        phone: t.customerPhone || '',
+        deliveryFee,
+        displayTitle: `${t.id} - ${t.nopol} (${t.customerName})`,
+        secondaryTitle: `${formatRupiah(t.total)} • ${t.paymentMethod || 'Tunai'}${deliveryFee > 0 ? ` • Ada Biaya Antar ${formatRupiah(deliveryFee)}` : ''}`
+      };
+    });
+  }, [transactions]);
+
   // Saat nomor transaksi dipilih, otomatis isi nopol, pelanggan, dan deteksi biaya antar dari pelanggan
-  const handleTransactionChange = (selectedTxId) => {
-    setTransactionId(selectedTxId);
+  const handleTransactionChange = (selectedTxId, item = null) => {
+    setTransactionId(selectedTxId || '');
     if (!selectedTxId) {
+      setNopol('');
+      setCustomerName('');
+      setCustomerPhone('');
       setCustomerFee(0);
       return;
     }
 
-    const tx = transactions.find((t) => t.id === selectedTxId);
+    const tx = item || transactions.find((t) => t.id === selectedTxId);
     if (tx) {
       setNopol(tx.nopol || '');
       setCustomerName(tx.customerName || '');
       setCustomerPhone(tx.customerPhone || '');
 
       // Deteksi biaya antar / jemput dari extraCosts transaksi
-      let detectedFee = 0;
-      const extraList = Array.isArray(tx.extraCosts) ? tx.extraCosts : [];
-      
-      for (const extra of extraList) {
-        const lbl = (extra.label || '').toLowerCase();
-        if (lbl.includes('antar') || lbl.includes('jemput') || lbl.includes('delivery') || lbl.includes('drop')) {
-          detectedFee += Number(extra.amount) || 0;
+      let detectedFee = tx.deliveryFee !== undefined ? tx.deliveryFee : 0;
+      if (detectedFee === 0) {
+        const extraList = Array.isArray(tx.extraCosts) ? tx.extraCosts : [];
+        for (const extra of extraList) {
+          const lbl = (extra.label || '').toLowerCase();
+          if (lbl.includes('antar') || lbl.includes('jemput') || lbl.includes('delivery') || lbl.includes('drop')) {
+            detectedFee += Number(extra.amount) || 0;
+          }
         }
       }
 
       setCustomerFee(detectedFee);
 
-      // Otomatis buat template keterangan jika belum diisi
-      if (!description.trim()) {
+      // Otomatis buat template keterangan jika belum diisi atau masih template default
+      if (!description.trim() || description.startsWith('Biaya ')) {
         const dest = tx.notes ? ` (${tx.notes})` : '';
         setDescription(`Biaya ${category.toLowerCase()} unit ${tx.nopol} untuk pelanggan ${tx.customerName}${dest}.`);
       }
@@ -317,21 +347,37 @@ export default function ModalBpkForm({
             {isRentalRelated ? (
               <div>
                 <div className="form-group" style={{ marginBottom: '10px' }}>
-                  <label className="form-label" style={{ fontSize: '11.5px' }}>Pilih Nomor Transaksi Rental *</label>
-                  <select 
-                    className="form-control"
+                  <label className="form-label" style={{ fontSize: '11.5px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Pilih / Cari Transaksi Rental *</span>
+                    <span style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: 'normal' }}>
+                      (Ketik No. TRX / Plat / Nama)
+                    </span>
+                  </label>
+                  <SearchableSelect
+                    options={transactionOptions}
                     value={transactionId}
-                    onChange={(e) => handleTransactionChange(e.target.value)}
-                    required={isRentalRelated}
-                    style={{ fontSize: '13px', fontWeight: '600' }}
-                  >
-                    <option value="">-- Pilih Transaksi Rental --</option>
-                    {transactions.map((tx) => (
-                      <option key={tx.id} value={tx.id}>
-                        {tx.id} &bull; {tx.nopol} &bull; {tx.customerName} ({formatRupiah(tx.total)})
-                      </option>
-                    ))}
-                  </select>
+                    valueKey="id"
+                    displayKey="displayTitle"
+                    secondaryKey="secondaryTitle"
+                    placeholder="Ketik atau pilih transaksi rental..."
+                    searchPlaceholder="Cari no. TRX, nopol, atau nama pelanggan..."
+                    showSecondaryInTrigger={false}
+                    allowCustom={false}
+                    badgeRenderer={(item) => (
+                      <span 
+                        className={`badge ${item.status === 'active' ? 'badge-success' : (item.status === 'booking' ? 'badge-warning' : 'badge-secondary')}`}
+                        style={{ fontSize: '10px', textTransform: 'capitalize' }}
+                      >
+                        {item.status === 'active' ? 'Aktif' : (item.status === 'booking' ? 'Booking' : (item.status || 'Selesai'))}
+                      </span>
+                    )}
+                    onChange={(val, item) => {
+                      handleTransactionChange(val, item);
+                    }}
+                  />
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    * Anda dapat mengetik nomor transaksi (misal: TRX-...), plat nomor (misal: B 1189), atau nama pelanggan.
+                  </div>
                 </div>
 
                 {transactionId && (

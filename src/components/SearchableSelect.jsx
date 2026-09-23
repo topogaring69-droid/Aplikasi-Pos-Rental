@@ -24,6 +24,7 @@ export default function SearchableSelect({
   onCustomSelect,
   disabled = false,
   required = false,
+  showSecondaryInTrigger = true,
   style = {}
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -61,33 +62,51 @@ export default function SearchableSelect({
   // Label yang ditampilkan di tombol pemicu dropdown
   const displayLabel = useMemo(() => {
     if (selectedItem) {
-      const sec = secondaryKey && selectedItem[secondaryKey] ? ` (${selectedItem[secondaryKey]})` : '';
+      const sec = showSecondaryInTrigger && secondaryKey && selectedItem[secondaryKey] 
+        ? ` (${selectedItem[secondaryKey]})` 
+        : '';
       return `${selectedItem[displayKey]}${sec}`;
     }
     if (value && typeof value === 'string') {
       return value;
     }
     return '';
-  }, [selectedItem, value, displayKey, secondaryKey]);
+  }, [selectedItem, value, displayKey, secondaryKey, showSecondaryInTrigger]);
 
-  // Filter opsi berdasarkan teks pencarian (mencari nopol, merk, tipe, nama, no hp)
+  // Filter opsi berdasarkan teks pencarian (mencari id, nopol, merk, tipe, nama, no hp, keterangan)
   const filteredOptions = useMemo(() => {
     if (!query.trim()) return options;
     const q = query.toLowerCase().trim();
     const cleanQ = q.replace(/\s+/g, '');
+    const cleanDigits = q.replace(/\D/g, '');
+
     return options.filter((opt) => {
       const mainText = String(opt[displayKey] || '').toLowerCase();
       const secText = secondaryKey ? String(opt[secondaryKey] || '').toLowerCase() : '';
+      const idText = opt.id != null ? String(opt.id).toLowerCase() : '';
+      const nopolText = opt.nopol ? String(opt.nopol).toLowerCase() : '';
+      const nameText = opt.customerName || opt.name ? String(opt.customerName || opt.name).toLowerCase() : '';
+      const rawPhone = String(opt.customerPhone || opt.phone || '');
+      const phoneText = rawPhone.toLowerCase();
+      const phoneDigits = rawPhone.replace(/\D/g, '');
       const brandText = opt.brand ? String(opt.brand).toLowerCase() : '';
       const modelText = opt.model ? String(opt.model).toLowerCase() : '';
-      const phoneText = opt.phone ? String(opt.phone).toLowerCase() : '';
+
+      const matchPhoneDigits = cleanDigits.length >= 3 && phoneDigits.includes(cleanDigits);
+
       return (
         mainText.includes(q) ||
         mainText.replace(/\s+/g, '').includes(cleanQ) ||
         secText.includes(q) ||
+        idText.includes(q) ||
+        idText.replace(/\s+/g, '').includes(cleanQ) ||
+        nopolText.includes(q) ||
+        nopolText.replace(/\s+/g, '').includes(cleanQ) ||
+        nameText.includes(q) ||
+        phoneText.includes(q) ||
+        matchPhoneDigits ||
         brandText.includes(q) ||
-        modelText.includes(q) ||
-        phoneText.includes(q)
+        modelText.includes(q)
       );
     });
   }, [options, query, displayKey, secondaryKey]);
