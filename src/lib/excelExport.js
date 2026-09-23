@@ -558,6 +558,151 @@ export async function exportExpensesToExcel(expenses = [], settings = {}) {
   return exportExpensesReportToExcel(expenses, settings);
 }
 
+// ==================== 4B. EKSPOR BUKTI PENGELUARAN KAS (BPK) ====================
+export async function exportBpkToExcel(bpkList = [], settings = {}, periodLabel = '') {
+  if (!bpkList || bpkList.length === 0) {
+    showAlert({ title: 'BPK Kosong', text: 'Tidak ada data Bukti Pengeluaran Kas untuk diekspor pada periode ini.', icon: 'info' });
+    return;
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet('Bukti Pengeluaran Kas', {
+    views: [{ showGridLines: true }],
+  });
+
+  const title = periodLabel ? `Laporan Bukti Pengeluaran Kas (${periodLabel})` : 'Laporan Bukti Pengeluaran Kas (BPK)';
+  createDocumentHeader(ws, title, settings);
+
+  const headers = [
+    'No',
+    'Nomor BPK',
+    'Tanggal',
+    'Status',
+    'Metode',
+    'Dibayarkan Kepada',
+    'Jabatan / Peran',
+    'Keperluan',
+    'Nomor Transaksi',
+    'Nomor Polisi',
+    'Pelanggan',
+    'No. HP Pelanggan',
+    'Biaya Pelanggan (Rp)',
+    'Biaya Dibayar Tim (Rp)',
+    'Selisih (Rp)',
+    'Keterangan',
+  ];
+
+  const headerRow = ws.addRow(headers);
+  headerRow.height = 26;
+  headerRow.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.HEADER_BG } };
+    cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: COLORS.HEADER_TEXT } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = BORDER_THIN;
+  });
+
+  let totalBiayaTim = 0;
+  let totalBiayaPelanggan = 0;
+  let totalSelisih = 0;
+
+  bpkList.forEach((b, idx) => {
+    const isEven = idx % 2 === 1;
+    const amountVal = Number(b.amount) || 0;
+    const custFeeVal = Number(b.customerFee) || 0;
+    const marginVal = custFeeVal > 0 ? (custFeeVal - amountVal) : 0;
+
+    if (b.status === 'Sudah Dibayar') {
+      totalBiayaTim += amountVal;
+      totalBiayaPelanggan += custFeeVal;
+      totalSelisih += marginVal;
+    }
+
+    const row = ws.addRow([
+      idx + 1,
+      b.id,
+      formatDateTime(b.date),
+      b.status,
+      b.paymentMethod || 'Tunai',
+      b.recipientName,
+      b.recipientRole || '-',
+      b.category + (b.categoryOther ? ` (${b.categoryOther})` : ''),
+      b.transactionId || '-',
+      b.nopol || '-',
+      b.customerName || '-',
+      b.customerPhone || '-',
+      custFeeVal,
+      amountVal,
+      marginVal,
+      b.description || '-',
+    ]);
+
+    row.height = 22;
+    row.eachCell((cell, colNum) => {
+      cell.border = BORDER_THIN;
+      cell.font = { name: 'Calibri', size: 9.5 };
+      cell.alignment = { vertical: 'middle' };
+
+      if (isEven) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.ZEBRA_BG } };
+      }
+
+      if ([1, 2, 3, 5, 9, 10, 12].includes(colNum)) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      } else if (colNum === 4) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (b.status === 'Sudah Dibayar') {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.STATUS_GREEN_BG } };
+          cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: COLORS.STATUS_GREEN_TXT } };
+        } else if (b.status === 'Dibatalkan') {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.STATUS_RED_BG } };
+          cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: COLORS.STATUS_RED_TXT } };
+        } else {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.STATUS_GRAY_BG } };
+          cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: COLORS.STATUS_GRAY_TXT } };
+        }
+      } else if ([13, 14, 15].includes(colNum)) {
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        cell.numFmt = '#,##0';
+        if (colNum === 14) {
+          cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: COLORS.STATUS_RED_TXT } };
+        } else if (colNum === 15) {
+          cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: COLORS.STATUS_GREEN_TXT } };
+        }
+      }
+    });
+  });
+
+  // Baris Total Pengeluaran BPK
+  const totalRow = ws.addRow([
+    'TOTAL BIAYA BPK (Sudah Dibayar)',
+    '', '', '', '', '', '', '', '', '', '', '',
+    totalBiayaPelanggan,
+    totalBiayaTim,
+    totalSelisih,
+    ''
+  ]);
+  totalRow.height = 24;
+  totalRow.eachCell((cell, colNum) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.TOTAL_BG } };
+    cell.font = { name: 'Calibri', size: 10, bold: true };
+    cell.border = BORDER_TOTAL;
+    cell.alignment = { vertical: 'middle' };
+    if ([13, 14, 15].includes(colNum)) {
+      cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      cell.numFmt = '#,##0';
+    }
+  });
+
+  ws.mergeCells(totalRow.number, 1, totalRow.number, 12);
+  totalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+  autoFitColumns(ws);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const filename = `laporan-bpk-pengeluaran-${todayStr}.xlsx`;
+  await saveWorkbook(workbook, filename);
+}
+
 // ==================== 5. EKSPOR LAPORAN KEUANGAN ====================
 export async function exportReportToExcel(reportData) {
   const {

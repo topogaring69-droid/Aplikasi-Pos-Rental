@@ -16,34 +16,43 @@ import {
   ImageIcon,
   X,
   ExternalLink,
-  Edit3
+  Edit3,
+  FileCheck2,
+  Filter
 } from 'lucide-react';
 import { 
   fetchTransactions, 
   getTransactions,
   fetchExpenses, 
   getExpenses,
+  fetchBpkList,
+  getBpkList,
   fetchSettings, 
-  getSettings,
+  getSettings, 
   formatRupiah, 
-  formatDateTime,
-  formatDateOnly,
-  getGdriveReceiptUrl
+  formatDateTime, 
+  formatDateOnly, 
+  getGdriveReceiptUrl 
 } from '../../lib/storage';
-import { exportReportToPrintable } from '../../lib/pdfExport';
-import { exportReportToExcel, exportExpensesReportToExcel } from '../../lib/excelExport';
+import { exportReportToPrintable, exportBpkReportToPrintable } from '../../lib/pdfExport';
+import { exportReportToExcel, exportExpensesReportToExcel, exportBpkToExcel } from '../../lib/excelExport';
 import ModalDetail from '../../components/ModalDetail';
 import StrukModal from '../../components/StrukModal';
 import ModalEditPengeluaran from '../../components/ModalEditPengeluaran';
+import BpkDocumentModal from '../../components/BpkDocumentModal';
 
 export default function LaporanPage() {
   const [transactions, setTransactions] = useState(() => getTransactions());
   const [expenses, setExpenses] = useState(() => getExpenses());
+  const [bpkList, setBpkList] = useState(() => getBpkList());
   const [settings, setSettings] = useState(() => getSettings());
   const [isLoading, setIsLoading] = useState(() => getTransactions().length === 0 && getExpenses().length === 0);
 
   // Tab: 'pemasukan' | 'pengeluaran'
   const [activeTab, setActiveTab] = useState('pemasukan');
+
+  // Sub-filter Pengeluaran: 'semua' | 'operasional' | 'bpk'
+  const [expenseSubView, setExpenseSubView] = useState('semua');
 
   // Filter Periode
   const [period, setPeriod] = useState('bulan-ini');
@@ -51,11 +60,16 @@ export default function LaporanPage() {
   const [customEnd, setCustomEnd] = useState('');
   const [search, setSearch] = useState('');
 
+  // Filter Khusus BPK
+  const [bpkCategoryFilter, setBpkCategoryFilter] = useState('all');
+  const [bpkStatusFilter, setBpkStatusFilter] = useState('all');
+
   // Modal State
   const [selectedTx, setSelectedTx] = useState(null);
   const [strukTx, setStrukTx] = useState(null);
   const [zoomPhoto, setZoomPhoto] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
+  const [viewingBpkDoc, setViewingBpkDoc] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -66,14 +80,19 @@ export default function LaporanPage() {
 
   const loadData = async () => {
     try {
-      const [txList, expList] = await Promise.all([
-        fetchTransactions(),
-        fetchExpenses()
+      const [txList, expList, bList, sett] = await Promise.all([
+        fetchTransactions().catch(() => getTransactions()),
+        fetchExpenses().catch(() => getExpenses()),
+        fetchBpkList().catch(() => getBpkList()),
+        fetchSettings().catch(() => getSettings()),
       ]);
+
       if (Array.isArray(txList)) setTransactions(txList);
       if (Array.isArray(expList)) setExpenses(expList);
+      if (Array.isArray(bList)) setBpkList(bList);
+      if (sett) setSettings(sett);
+
       setIsLoading(false);
-      fetchSettings().then((sett) => sett && setSettings(sett)).catch(() => {});
     } catch {
       setIsLoading(false);
     }
@@ -137,9 +156,37 @@ export default function LaporanPage() {
       );
     });
 
+  // Filtered BPK
+  const filteredBpk = bpkList
+    .filter((b) => filterByDate(b.date || b.createdAt))
+    .filter((b) => {
+      if (bpkCategoryFilter !== 'all' && b.category !== bpkCategoryFilter) return false;
+      if (bpkStatusFilter !== 'all' && b.status !== bpkStatusFilter) return false;
+      const q = search.toLowerCase();
+      return (
+        (b.id || '').toLowerCase().includes(q) ||
+        (b.recipientName || '').toLowerCase().includes(q) ||
+        (b.category || '').toLowerCase().includes(q) ||
+        (b.nopol || '').toLowerCase().includes(q) ||
+        (b.transactionId || '').toLowerCase().includes(q) ||
+        (b.customerName || '').toLowerCase().includes(q) ||
+        (b.description || '').toLowerCase().includes(q)
+      );
+    });
+
   const totalIncome = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.total) || 0), 0);
   const totalExpense = filteredExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const netProfit = totalIncome - totalExpense;
+
+  const totalBpkPaid = filteredBpk
+    .filter((b) => b.status === 'Sudah Dibayar')
+    .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+
+  const totalBpkCustFee = filteredBpk
+    .filter((b) => b.status === 'Sudah Dibayar')
+    .reduce((sum, b) => sum + (Number(b.customerFee) || 0), 0);
+
+  const totalBpkMargin = totalBpkCustFee > 0 ? (totalBpkCustFee - totalBpkPaid) : 0;
 
   const getPeriodLabel = () => {
     switch (period) {
@@ -153,6 +200,16 @@ export default function LaporanPage() {
 
   const handleExportPDF = () => {
     if (!settings) return;
+    if (activeTab === 'pengeluaran' && expenseSubView === 'bpk') {
+      exportBpkReportToPrintable({
+        settings,
+        periodLabel: getPeriodLabel(),
+        totalBpkAmount: totalBpkPaid,
+        bpkList: filteredBpk
+      });
+      return;
+    }
+
     exportReportToPrintable({
       settings,
       periodLabel: getPeriodLabel(),
@@ -165,6 +222,16 @@ export default function LaporanPage() {
   };
 
   const handleExportExcel = () => {
+    if (activeTab === 'pengeluaran' && expenseSubView === 'bpk') {
+      exportBpkToExcel(filteredBpk, settings, getPeriodLabel());
+      return;
+    }
+
+    if (activeTab === 'pengeluaran') {
+      exportExpensesReportToExcel(filteredExpenses, settings, getPeriodLabel());
+      return;
+    }
+
     exportReportToExcel({
       settings,
       periodLabel: getPeriodLabel(),
@@ -176,47 +243,20 @@ export default function LaporanPage() {
     });
   };
 
-  const handleExportPengeluaranExcel = () => {
-    exportExpensesReportToExcel(filteredExpenses, settings, getPeriodLabel());
-  };
-
-  const handleDownloadReceipt = async (photoUrl, expId = 'EXP') => {
-    if (!photoUrl) return;
-    try {
-      const res = await fetch(photoUrl);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const ext = photoUrl.endsWith('.jpg') || photoUrl.endsWith('.jpeg') ? 'jpg' : 'png';
-      a.download = `nota_${expId}_${new Date().toISOString().slice(0, 10)}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      const a = document.createElement('a');
-      a.href = photoUrl;
-      a.download = `nota_${expId}.png`;
-      a.target = '_blank';
-      a.click();
-    }
-  };
-
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Laporan Keuangan</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Arus Kas Pemasukan & Pengeluaran</p>
+          <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Laporan Keuangan & Pengeluaran</h2>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Arus Kas Pemasukan, Pengeluaran & Bukti Kas (BPK)</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            onClick={activeTab === 'pengeluaran' ? handleExportPengeluaranExcel : handleExportExcel}
+            onClick={handleExportExcel}
             style={{ fontWeight: 700, background: '#ffffff', gap: '6px' }}
-            title={activeTab === 'pengeluaran' ? "Ekspor laporan pengeluaran ke Excel (.xlsx)" : "Ekspor laporan keuangan lengkap ke Excel (.xlsx)"}
+            title="Ekspor laporan ke file Excel (.xlsx)"
           >
             <Download size={14} />
             <span>Ekspor Excel</span>
@@ -226,9 +266,10 @@ export default function LaporanPage() {
             className="btn btn-primary btn-sm"
             onClick={handleExportPDF}
             style={{ gap: '6px' }}
+            title="Cetak atau simpan laporan sebagai PDF"
           >
-            <Download size={15} />
-            <span>Ekspor PDF</span>
+            <Printer size={14} />
+            <span>Cetak PDF</span>
           </button>
         </div>
       </div>
@@ -279,10 +320,10 @@ export default function LaporanPage() {
         </div>
       )}
 
-      {/* Kartu Ringkasan Finansial */}
+      {/* Kartu Ringkasan Finansial Utama */}
       <div className="stat-card-grid">
         <div className="stat-card income">
-          <div className="stat-label">Pemasukan</div>
+          <div className="stat-label">Pemasukan Rental</div>
           <div className="stat-val" style={{ color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
             {formatRupiah(totalIncome)}
           </div>
@@ -292,17 +333,17 @@ export default function LaporanPage() {
         </div>
 
         <div className="stat-card expense">
-          <div className="stat-label">Pengeluaran</div>
+          <div className="stat-label">Total Pengeluaran Kas</div>
           <div className="stat-val" style={{ color: 'var(--accent-rose)', fontFamily: 'var(--font-mono)' }}>
             {formatRupiah(totalExpense)}
           </div>
           <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            {filteredExpenses.length} Nota
+            {filteredExpenses.length} Nota (Termasuk BPK Lunas)
           </span>
         </div>
 
         <div className="stat-card profit">
-          <div className="stat-label">Laba Bersih</div>
+          <div className="stat-label">Laba Bersih Operasional</div>
           <div 
             className="stat-val" 
             style={{ 
@@ -313,7 +354,7 @@ export default function LaporanPage() {
             {formatRupiah(netProfit)}
           </div>
           <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            {netProfit >= 0 ? 'Surplus' : 'Defisit'}
+            {netProfit >= 0 ? 'Surplus Kas' : 'Defisit Kas'}
           </span>
         </div>
       </div>
@@ -324,31 +365,33 @@ export default function LaporanPage() {
         <input
           type="text"
           className="search-input"
-          placeholder="Cari dalam laporan (nopol, no. transaksi, keterangan)..."
+          placeholder="Cari dalam laporan (nopol, no. transaksi, penerima, keterangan)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      {/* Tab Segment */}
-      <div className="tab-group">
+      {/* Tab Segment Utama */}
+      <div className="tab-group" style={{ marginBottom: '14px' }}>
         <button
           type="button"
           className={`tab-btn ${activeTab === 'pemasukan' ? 'active' : ''}`}
           onClick={() => setActiveTab('pemasukan')}
         >
-          Pemasukan ({filteredTransactions.length})
+          Pemasukan Rental ({filteredTransactions.length})
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === 'pengeluaran' ? 'active' : ''}`}
           onClick={() => setActiveTab('pengeluaran')}
         >
-          Pengeluaran ({filteredExpenses.length})
+          Pengeluaran & BPK ({filteredExpenses.length})
         </button>
       </div>
 
-      {/* TAB 1: PEMASUKAN */}
+      {/* ======================================================== */}
+      {/* TAB 1: PEMASUKAN                                         */}
+      {/* ======================================================== */}
       {activeTab === 'pemasukan' && (
         <div>
           <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>
@@ -407,112 +450,268 @@ export default function LaporanPage() {
         </div>
       )}
 
-      {/* TAB 2: PENGELUARAN */}
+      {/* ======================================================== */}
+      {/* TAB 2: PENGELUARAN & BPK                                 */}
+      {/* ======================================================== */}
       {activeTab === 'pengeluaran' && (
         <div>
+          {/* Sub-selector Filter Pengeluaran */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
-              * Menampilkan <strong>{filteredExpenses.length}</strong> catatan pengeluaran ({getPeriodLabel()}).
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${expenseSubView === 'semua' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setExpenseSubView('semua')}
+                style={{ fontSize: '11.5px', borderRadius: '16px' }}
+              >
+                Semua Pengeluaran ({filteredExpenses.length})
+              </button>
+
+              <button
+                type="button"
+                className={`btn btn-sm ${expenseSubView === 'bpk' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setExpenseSubView('bpk')}
+                style={{ fontSize: '11.5px', borderRadius: '16px', gap: '4px' }}
+              >
+                <FileCheck2 size={13} />
+                <span>Khusus BPK ({filteredBpk.length})</span>
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={handleExportPengeluaranExcel}
-              style={{ fontWeight: 700, background: '#ffffff', gap: '6px' }}
-              title="Ekspor laporan pengeluaran terfilter ke Excel (.xlsx)"
-            >
-              <Download size={14} />
-              <span>Export Excel</span>
-            </button>
+
+            {expenseSubView === 'bpk' && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <select
+                  className="form-control form-control-sm"
+                  value={bpkCategoryFilter}
+                  onChange={(e) => setBpkCategoryFilter(e.target.value)}
+                  style={{ fontSize: '11px', padding: '2px 8px', width: 'auto' }}
+                >
+                  <option value="all">Semua Keperluan</option>
+                  <option value="Antar motor">Antar motor</option>
+                  <option value="Jemput motor">Jemput motor</option>
+                  <option value="Antar & jemput motor">Antar & jemput motor</option>
+                  <option value="Operasional">Operasional</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+
+                <select
+                  className="form-control form-control-sm"
+                  value={bpkStatusFilter}
+                  onChange={(e) => setBpkStatusFilter(e.target.value)}
+                  style={{ fontSize: '11px', padding: '2px 8px', width: 'auto' }}
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="Sudah Dibayar">Sudah Dibayar</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Dibatalkan">Dibatalkan</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {filteredExpenses.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-dim)' }}>
-              Tidak ada data pengeluaran pada periode ini.
-            </div>
-          ) : (
-            filteredExpenses.map((exp) => (
-              <div key={exp.id} className="list-item" style={{ cursor: 'default' }}>
-                <div className="item-top">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span 
-                      style={{ 
-                        fontFamily: 'var(--font-mono)', 
-                        fontWeight: '800', 
-                        fontSize: '12px',
-                        color: 'var(--primary)',
-                        background: 'rgba(16, 185, 129, 0.1)',
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        letterSpacing: '0.3px'
-                      }}
-                      title="Nomor Transaksi Pengeluaran"
-                    >
-                      {exp.id}
-                    </span>
-                    <span className="badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontSize: '11px' }}>
-                      {exp.category || 'Umum'}
-                    </span>
-                    {exp.isVehicleRelated && exp.nopol ? (
-                      <span className="badge badge-plate">{exp.nopol}</span>
-                    ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Toko</span>
-                    )}
+          {/* VIEW KHUSUS BPK */}
+          {expenseSubView === 'bpk' ? (
+            <div>
+              {/* Ringkasan BPK Report */}
+              <div className="card" style={{ padding: '12px 14px', background: '#eff6ff', borderColor: '#bfdbfe', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>Total BPK (Sudah Dibayar):</div>
+                    <strong style={{ fontSize: '15px', color: '#e11d48', fontFamily: 'monospace' }}>{formatRupiah(totalBpkPaid)}</strong>
                   </div>
-                  <div className="item-amount" style={{ color: 'var(--accent-rose)', fontFamily: 'var(--font-mono)' }}>
-                    {formatRupiah(exp.amount)}
+                  <div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>Jumlah Dokumen BPK:</div>
+                    <strong style={{ fontSize: '15px', color: '#0284c7' }}>{filteredBpk.length} Dokumen</strong>
                   </div>
-                </div>
-
-                <div className="item-middle">
-                  <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)', marginTop: '2px' }}>
-                    {exp.description}
+                  <div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>Biaya Pelanggan:</div>
+                    <strong style={{ fontSize: '14px', color: '#0f172a' }}>{formatRupiah(totalBpkCustFee)}</strong>
                   </div>
-                </div>
-
-                <div className="item-bottom" style={{ marginTop: '8px' }}>
-                  <span>{formatDateTime(exp.date)}</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      style={{ height: '28px', padding: '2px 10px', fontSize: '11px', gap: '4px', color: 'var(--accent-amber)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-                      onClick={() => setEditingExpense(exp)}
-                      title="Edit transaksi pengeluaran ini"
-                    >
-                      <Edit3 size={13} />
-                      <span>Edit</span>
-                    </button>
-                    {exp.receiptPhoto && (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px' }}
-                          onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
-                          title="Lihat Foto Nota"
-                        >
-                          <ImageIcon size={12} />
-                          <span>Lihat</span>
-                        </button>
-                        <a
-                          href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary btn-sm"
-                          style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                          title="Buka Berkas Nota di Google Drive"
-                        >
-                          <ExternalLink size={12} />
-                          <span>Drive</span>
-                        </a>
-                      </>
-                    )}
+                  <div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>Selisih Efisiensi Tim:</div>
+                    <strong style={{ fontSize: '14px', color: '#166534' }}>{formatRupiah(totalBpkMargin)}</strong>
                   </div>
                 </div>
               </div>
-            ))
+
+              {filteredBpk.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-dim)' }}>
+                  Tidak ada data Bukti Pengeluaran Kas (BPK) pada periode & filter ini.
+                </div>
+              ) : (
+                filteredBpk.map((b) => (
+                  <div 
+                    key={b.id} 
+                    className="list-item" 
+                    onClick={() => setViewingBpkDoc(b)}
+                    style={{ cursor: 'pointer' }}
+                    title="Klik untuk membuka dokumen resmi BPK"
+                  >
+                    <div className="item-top">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span 
+                          style={{ 
+                            fontFamily: 'monospace', 
+                            fontWeight: '800', 
+                            fontSize: '12px',
+                            color: b.status === 'Dibatalkan' ? '#991b1b' : 'var(--primary)',
+                            background: b.status === 'Dibatalkan' ? '#fee2e2' : 'rgba(16, 185, 129, 0.1)',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${b.status === 'Dibatalkan' ? '#fca5a5' : 'rgba(16, 185, 129, 0.25)'}`
+                          }}
+                        >
+                          {b.id}
+                        </span>
+
+                        <span style={{ 
+                          fontSize: '10.5px', 
+                          fontWeight: '700',
+                          padding: '1px 6px',
+                          borderRadius: '8px',
+                          background: b.status === 'Sudah Dibayar' ? '#dcfce7' : (b.status === 'Dibatalkan' ? '#fee2e2' : '#f1f5f9'),
+                          color: b.status === 'Sudah Dibayar' ? '#166534' : (b.status === 'Dibatalkan' ? '#991b1b' : '#475569')
+                        }}>
+                          {b.status}
+                        </span>
+
+                        <span className="badge" style={{ fontSize: '11px', background: '#f1f5f9' }}>
+                          {b.category}
+                        </span>
+
+                        {b.nopol && <span className="badge badge-plate">{b.nopol}</span>}
+                      </div>
+
+                      <div className="item-amount" style={{ color: b.status === 'Dibatalkan' ? '#94a3b8' : 'var(--accent-rose)', fontFamily: 'monospace' }}>
+                        {formatRupiah(b.amount)}
+                      </div>
+                    </div>
+
+                    <div className="item-middle">
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)', marginTop: '2px' }}>
+                        Penerima: <strong>{b.recipientName}</strong> {b.recipientRole ? `(${b.recipientRole})` : ''}
+                        {b.customerName ? ` &bull; Pelanggan: ${b.customerName}` : ''}
+                        {b.transactionId ? ` (${b.transactionId})` : ''}
+                      </div>
+                      {b.description && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {b.description}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="item-bottom" style={{ marginTop: '8px' }}>
+                      <span>{formatDateTime(b.date)}</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {Number(b.customerFee) > 0 && (
+                          <span style={{ fontSize: '11px', color: '#166534', fontWeight: '600' }}>
+                            Biaya Pelanggan: {formatRupiah(b.customerFee)}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '700' }}>
+                          Lihat Dokumen BPK &rarr;
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            /* VIEW SEMUA PENGELUARAN */
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                * Menampilkan <strong>{filteredExpenses.length}</strong> catatan pengeluaran kas ({getPeriodLabel()}).
+              </div>
+
+              {filteredExpenses.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-dim)' }}>
+                  Tidak ada data pengeluaran pada periode ini.
+                </div>
+              ) : (
+                filteredExpenses.map((exp) => (
+                  <div key={exp.id} className="list-item" style={{ cursor: 'default' }}>
+                    <div className="item-top">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span 
+                          style={{ 
+                            fontFamily: 'var(--font-mono)', 
+                            fontWeight: '800', 
+                            fontSize: '12px',
+                            color: 'var(--primary)',
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(16, 185, 129, 0.25)',
+                            letterSpacing: '0.3px'
+                          }}
+                        >
+                          {exp.id}
+                        </span>
+                        <span className="badge" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontSize: '11px' }}>
+                          {exp.category || 'Umum'}
+                        </span>
+                        {exp.isVehicleRelated && exp.nopol ? (
+                          <span className="badge badge-plate">{exp.nopol}</span>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Toko</span>
+                        )}
+                      </div>
+                      <div className="item-amount" style={{ color: 'var(--accent-rose)', fontFamily: 'var(--font-mono)' }}>
+                        {formatRupiah(exp.amount)}
+                      </div>
+                    </div>
+
+                    <div className="item-middle">
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)', marginTop: '2px' }}>
+                        {exp.description}
+                      </div>
+                    </div>
+
+                    <div className="item-bottom" style={{ marginTop: '8px' }}>
+                      <span>{formatDateTime(exp.date)}</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ height: '28px', padding: '2px 10px', fontSize: '11px', gap: '4px', color: 'var(--accent-amber)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                          onClick={() => setEditingExpense(exp)}
+                          title="Edit transaksi pengeluaran ini"
+                        >
+                          <Edit3 size={13} />
+                          <span>Edit</span>
+                        </button>
+                        {exp.receiptPhoto && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px' }}
+                              onClick={() => setZoomPhoto({ url: getGdriveReceiptUrl(exp) || exp.receiptPhoto, exp })}
+                              title="Lihat Foto Nota"
+                            >
+                              <ImageIcon size={12} />
+                              <span>Lihat</span>
+                            </button>
+                            <a
+                              href={getGdriveReceiptUrl(exp) || exp.receiptPhoto}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-secondary btn-sm"
+                              style={{ height: '28px', padding: '2px 8px', fontSize: '11px', gap: '4px', color: 'var(--primary)', borderColor: 'var(--primary-border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                              title="Buka Berkas Nota di Google Drive"
+                            >
+                              <ExternalLink size={12} />
+                              <span>Drive</span>
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
       )}
@@ -594,6 +793,15 @@ export default function LaporanPage() {
           onSaveSuccess={async () => {
             await loadData();
           }}
+        />
+      )}
+
+      {/* Modal Dokumen BPK */}
+      {viewingBpkDoc && (
+        <BpkDocumentModal
+          bpk={viewingBpkDoc}
+          settings={settings}
+          onClose={() => setViewingBpkDoc(null)}
         />
       )}
     </div>

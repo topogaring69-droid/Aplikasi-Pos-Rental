@@ -206,6 +206,29 @@ export const initialExpenses = [
   }
 ];
 
+export const initialBpk = [
+  {
+    id: "BPK-2026-00001",
+    date: "2026-09-19T10:00",
+    paymentMethod: "Tunai",
+    recipientName: "Andi Wijaya",
+    recipientRole: "Tim Antar",
+    category: "Antar motor",
+    categoryOther: "",
+    isRentalRelated: true,
+    transactionId: "TRX-20260919-001",
+    nopol: "B 1189 JKL",
+    customerName: "Ahmad Rizky Pratama",
+    customerPhone: "081234567890",
+    customerFee: 25000,
+    amount: 20000,
+    description: "Biaya antar motor unit B 1189 JKL ke Stasiun Cikarang untuk pelanggan transaksi TRX-20260919-001.",
+    status: "Sudah Dibayar",
+    createdByName: "Admin Shelby",
+    createdAt: "2026-09-19T10:05:00.000Z"
+  }
+];
+
 export const initialSettings = {
   storeName: "SHELBY RENT",
   tagline: "Rental Motor Profesional, Cepat & Terpercaya",

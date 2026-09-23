@@ -98,6 +98,7 @@ model Transaction {
   notes         String?   @default("")
   createdAt     DateTime  @default(now()) @map("created_at")
   deletedAt     DateTime? @map("deleted_at")
+  bpkRecords    Bpk[]
 
   @@index([deletedAt])
   @@index([status])
@@ -119,6 +120,7 @@ model Expense {
   gdriveLink       String?   @map("gdrive_link")
   createdAt        DateTime  @default(now()) @map("created_at")
   deletedAt        DateTime? @map("deleted_at")
+  bpkRecord        Bpk?
 
   @@index([deletedAt])
   @@map("expenses")
@@ -130,4 +132,38 @@ model Setting {
   value String
 
   @@map("settings")
+}
+
+// 8. Bukti Pengeluaran Kas (BPK)
+model Bpk {
+  id              String       @id // Format: BPK-YYYY-00001
+  date            String       // Tanggal BPK
+  paymentMethod   String       @default("Tunai") @map("payment_method") // Tunai, Transfer, QRIS
+  recipientName   String       @map("recipient_name") // Nama penerima
+  recipientRole   String?      @default("") @map("recipient_role") // Jabatan / peran penerima
+  category        String       // Antar motor, Jemput motor, Antar & jemput motor, Operasional, Lainnya
+  categoryOther   String?      @default("") @map("category_other")
+  isRentalRelated Boolean      @default(false) @map("is_rental_related")
+  transactionId   String?      @map("transaction_id")
+  nopol           String?
+  customerName    String?      @default("") @map("customer_name")
+  customerPhone   String?      @default("") @map("customer_phone")
+  customerFee     Int?         @default(0) @map("customer_fee") // Biaya antar dari pelanggan pada transaksi
+  amount          Int          // Biaya yang dibayarkan ke tim
+  description     String?      @default("")
+  status          String       @default("Sudah Dibayar") // Draft, Sudah Dibayar, Dibatalkan
+  expenseId       String?      @unique @map("expense_id")
+  createdByName   String?      @default("Admin") @map("created_by_name")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  transaction     Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  expense         Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([nopol])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("bpk_records")
 }

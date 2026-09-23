@@ -4,6 +4,7 @@ import {
   initialFleet, 
   initialTransactions, 
   initialExpenses, 
+  initialBpk,
   initialSettings 
 } from '../lib/seedData.js';
 import { ensureInitialAdmin } from '../lib/auth.js';
@@ -152,6 +153,34 @@ async function _doInitialize() {
           gdriveFileId: e.gdriveFileId || null,
           gdriveLink: e.gdriveLink || null,
           createdAt: new Date(e.createdAt || Date.now()),
+          deletedAt: null,
+        },
+      });
+    }
+
+    for (const b of (initialBpk || [])) {
+      await prisma.bpk.upsert({
+        where: { id: b.id },
+        update: {},
+        create: {
+          id: b.id,
+          date: b.date,
+          paymentMethod: b.paymentMethod || 'Tunai',
+          recipientName: b.recipientName,
+          recipientRole: b.recipientRole || '',
+          category: b.category,
+          categoryOther: b.categoryOther || '',
+          isRentalRelated: Boolean(b.isRentalRelated),
+          transactionId: b.transactionId || null,
+          nopol: b.nopol || null,
+          customerName: b.customerName || '',
+          customerPhone: b.customerPhone || '',
+          customerFee: Number(b.customerFee || 0),
+          amount: Number(b.amount),
+          description: b.description || '',
+          status: b.status || 'Sudah Dibayar',
+          createdByName: b.createdByName || 'Admin',
+          createdAt: new Date(b.createdAt || Date.now()),
           deletedAt: null,
         },
       });

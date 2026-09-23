@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { X, Printer, Trash2, Calendar, Phone, User, DollarSign } from 'lucide-react';
+import Link from 'next/link';
+import { X, Printer, Trash2, Calendar, Phone, User, DollarSign, FileCheck2 } from 'lucide-react';
 import { formatRupiah, formatDateTime, getPaymentStatus } from '../lib/storage';
 import { formatRentalDuration } from '../lib/rentalPricing';
 
@@ -80,6 +81,22 @@ export default function ModalDetail({ tx, onClose, onPrint, onEdit, onDelete, on
                 <span style={{ fontFamily: 'var(--font-mono)' }}>{formatRupiah(extra.amount)}</span>
               </div>
             ))}
+
+            {extraCosts.some(e => {
+              const lbl = (e.label || '').toLowerCase();
+              return lbl.includes('antar') || lbl.includes('jemput') || lbl.includes('delivery');
+            }) && (
+              <div style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                <Link
+                  href="/pengeluaran"
+                  onClick={onClose}
+                  style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '700', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <FileCheck2 size={13} />
+                  <span>Catat BPK Antar/Jemput untuk Transaksi Ini &rarr;</span>
+                </Link>
+              </div>
+            )}
 
             {Number(tx.discount || 0) > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: '13px', color: 'var(--accent-rose)' }}>

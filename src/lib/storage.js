@@ -5,6 +5,7 @@ const KEYS = {
   FLEET: 'pos_fleet',
   TRANSACTIONS: 'pos_transactions',
   EXPENSES: 'pos_expenses',
+  BPK: 'pos_bpk',
   SETTINGS: 'pos_settings'
 };
 
@@ -16,6 +17,7 @@ const memCache = {
   [KEYS.FLEET]: { data: null, timestamp: 0 },
   [KEYS.TRANSACTIONS]: { data: null, timestamp: 0 },
   [KEYS.EXPENSES]: { data: null, timestamp: 0 },
+  [KEYS.BPK]: { data: null, timestamp: 0 },
   [KEYS.SETTINGS]: { data: null, timestamp: 0 },
 };
 const inFlightRequests = {};
@@ -52,6 +54,7 @@ export function preloadAppData(activeRoute = '/') {
     { key: KEYS.CUSTOMERS, fetcher: fetchCustomers, path: '/pelanggan' },
     { key: KEYS.TRANSACTIONS, fetcher: fetchTransactions, path: '/transaksi' },
     { key: KEYS.EXPENSES, fetcher: fetchExpenses, path: '/pengeluaran' },
+    { key: KEYS.BPK, fetcher: fetchBpkList, path: '/pengeluaran' },
     { key: KEYS.SETTINGS, fetcher: fetchSettings, path: '/pengaturan' }
   ];
 
@@ -81,9 +84,11 @@ export function prefetchMenuData(targetHref) {
     fetchFleet().catch(() => {});
   } else if (targetHref.startsWith('/pengeluaran')) {
     fetchExpenses().catch(() => {});
+    fetchBpkList().catch(() => {});
   } else if (targetHref.startsWith('/laporan')) {
     fetchTransactions().catch(() => {});
     fetchExpenses().catch(() => {});
+    fetchBpkList().catch(() => {});
   } else if (targetHref.startsWith('/pengaturan')) {
     fetchSettings().catch(() => {});
   }
@@ -775,6 +780,141 @@ export async function deleteExpense(id) {
   return list;
 }
 
+// ==================== BUKTI PENGELUARAN KAS (BPK) ====================
+
+export async function fetchBpkList(forceRefresh = false) {
+  if (!isBrowser) return [];
+
+  // 1. Cek cache memori segar
+  if (!forceRefresh && memCache[KEYS.BPK].data && (Date.now() - memCache[KEYS.BPK].timestamp < CACHE_TTL)) {
+    return memCache[KEYS.BPK].data;
+  }
+
+  // 2. Request deduplication
+  if (inFlightRequests[KEYS.BPK]) {
+    return inFlightRequests[KEYS.BPK];
+  }
+
+  inFlightRequests[KEYS.BPK] = (async () => {
+    try {
+      const res = await fetch('/api/bpk');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem(KEYS.BPK, JSON.stringify(json.data));
+          memCache[KEYS.BPK] = { data: json.data, timestamp: Date.now() };
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal fetch BPK dari API, fallback cache lokal:', e);
+    } finally {
+      delete inFlightRequests[KEYS.BPK];
+    }
+    const fallback = getBpkList();
+    memCache[KEYS.BPK] = { data: fallback, timestamp: Date.now() };
+    return fallback;
+  })();
+
+  return inFlightRequests[KEYS.BPK];
+}
+
+export function getBpkList() {
+  if (!isBrowser) return [];
+  if (memCache[KEYS.BPK].data) {
+    return memCache[KEYS.BPK].data;
+  }
+  try {
+    const data = localStorage.getItem(KEYS.BPK);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    const list = Array.isArray(parsed) ? parsed : [];
+    memCache[KEYS.BPK].data = list;
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+export async function saveBpk(bpkData) {
+  if (!isBrowser) return;
+
+  const list = getBpkList();
+  const index = list.findIndex((b) => b.id === bpkData.id);
+  const isEdit = index >= 0;
+
+  const res = await fetch('/api/bpk', {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bpkData),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal menyimpan BPK (${res.status})`);
+  }
+
+  const saved = json.data || bpkData;
+
+  if (isEdit) {
+    list[index] = saved;
+  } else {
+    list.unshift(saved);
+  }
+
+  localStorage.setItem(KEYS.BPK, JSON.stringify(list));
+  memCache[KEYS.BPK] = { data: list, timestamp: Date.now() };
+
+  // Invalidate expenses cache agar total pengeluaran kas tersinkronisasi
+  invalidateCache(KEYS.EXPENSES);
+
+  return saved;
+}
+
+export async function cancelBpk(id, cancelReason = '') {
+  if (!isBrowser) return;
+
+  const res = await fetch('/api/bpk', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'cancel', cancelReason }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `Gagal membatalkan BPK (${res.status})`);
+  }
+
+  const updated = json.data;
+  const list = getBpkList();
+  const idx = list.findIndex((b) => b.id === id);
+  if (idx >= 0) {
+    list[idx] = updated;
+    localStorage.setItem(KEYS.BPK, JSON.stringify(list));
+    memCache[KEYS.BPK] = { data: list, timestamp: Date.now() };
+  }
+
+  invalidateCache(KEYS.EXPENSES);
+  return updated;
+}
+
+export async function deleteBpk(id) {
+  if (!isBrowser) return;
+
+  const list = getBpkList().filter((b) => b.id !== id);
+  localStorage.setItem(KEYS.BPK, JSON.stringify(list));
+  memCache[KEYS.BPK] = { data: list, timestamp: Date.now() };
+
+  try {
+    await fetch(`/api/bpk?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (e) {
+    console.warn('Hapus BPK di server tertunda:', e);
+  }
+
+  invalidateCache(KEYS.EXPENSES);
+  return list;
+}
+
 // ==================== PENGATURAN ====================
 
 export async function fetchSettings(forceRefresh = false) {
@@ -893,6 +1033,28 @@ export function formatDateOnly(dateStr) {
   }
 }
 
+export function terbilangRupiah(number) {
+  const nominal = Math.floor(Math.abs(Number(number) || 0));
+  if (nominal === 0) return 'Nol Rupiah';
+
+  const satuan = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh', 'Sebelas'];
+
+  function toWords(n) {
+    if (n < 12) return satuan[n];
+    if (n < 20) return toWords(n - 10) + ' Belas';
+    if (n < 100) return toWords(Math.floor(n / 10)) + ' Puluh' + (n % 10 !== 0 ? ' ' + satuan[n % 10] : '');
+    if (n < 200) return 'Seratus' + (n % 100 !== 0 ? ' ' + toWords(n % 100) : '');
+    if (n < 1000) return toWords(Math.floor(n / 100)) + ' Ratus' + (n % 100 !== 0 ? ' ' + toWords(n % 100) : '');
+    if (n < 2000) return 'Seribu' + (n % 1000 !== 0 ? ' ' + toWords(n % 1000) : '');
+    if (n < 1000000) return toWords(Math.floor(n / 1000)) + ' Ribu' + (n % 1000 !== 0 ? ' ' + toWords(n % 1000) : '');
+    if (n < 1000000000) return toWords(Math.floor(n / 1000000)) + ' Juta' + (n % 1000000 !== 0 ? ' ' + toWords(n % 1000000) : '');
+    if (n < 1000000000000) return toWords(Math.floor(n / 1000000000)) + ' Miliar' + (n % 1000000000 !== 0 ? ' ' + toWords(n % 1000000000) : '');
+    return toWords(Math.floor(n / 1000000000000)) + ' Triliun' + (n % 1000000000000 !== 0 ? ' ' + toWords(n % 1000000000000) : '');
+  }
+
+  return `${toWords(nominal).trim()} Rupiah`;
+}
+
 export function exportAllData() {
   const data = {
     app: "POS Rental Motor",
@@ -901,6 +1063,7 @@ export function exportAllData() {
     fleet: getFleet(),
     transactions: getTransactions(),
     expenses: getExpenses(),
+    bpkList: getBpkList(),
     settings: getSettings()
   };
   const jsonStr = JSON.stringify(data, null, 2);
@@ -919,6 +1082,7 @@ export function importAllData(jsonData) {
   if (jsonData.fleet) localStorage.setItem(KEYS.FLEET, JSON.stringify(jsonData.fleet));
   if (jsonData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(jsonData.transactions));
   if (jsonData.expenses) localStorage.setItem(KEYS.EXPENSES, JSON.stringify(jsonData.expenses));
+  if (jsonData.bpkList) localStorage.setItem(KEYS.BPK, JSON.stringify(jsonData.bpkList));
   if (jsonData.settings) localStorage.setItem(KEYS.SETTINGS, JSON.stringify(jsonData.settings));
   return true;
 }
